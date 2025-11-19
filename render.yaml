@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: hello-dreams-ai-api
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build && npm run migration:run:prod
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_HOST
+        fromDatabase:
+          name: hello-dreams-ai-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: hello-dreams-ai-db
+          property: port
+      - key: DB_USERNAME
+        fromDatabase:
+          name: hello-dreams-ai-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: hello-dreams-ai-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: hello-dreams-ai-db
+          property: database
+
+databases:
+  - name: hello-dreams-ai-db
+    plan: starter
+    databaseName: hello_dreams_ai
+    user: hello_dreams_ai_user
