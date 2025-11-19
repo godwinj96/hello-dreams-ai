@@ -33,30 +33,58 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get('DB_HOST', 'localhost'),
-        port: configService.get<number>('DB_PORT', 5432),
-        username: configService.get('DB_USERNAME', 'postgres'),
-        password: configService.get('DB_PASSWORD', 'postgres'),
-        database: configService.get('DB_NAME', 'hello_dreams_ai'),
-        entities: [
-          User,
-          RefreshToken,
-          ResumeConversation,
-          ResumeMessage,
-          Resume,
-          ResumeData,
-          ProfessionalProfile,
-          CareerConversation,
-          CareerMessage,
-          PersonaAnswer,
-          DocumentConversation,
-          DocumentMessage,
-          Document,
-        ],
-        synchronize: configService.get('NODE_ENV') !== 'production',
-      }),
+      useFactory: (configService: ConfigService) => {
+        const databaseUrl = configService.get('DATABASE_URL');
+        
+        // Support both DATABASE_URL (connection string) and individual DB_* variables
+        if (databaseUrl) {
+          return {
+            type: 'postgres',
+            url: databaseUrl,
+            entities: [
+              User,
+              RefreshToken,
+              ResumeConversation,
+              ResumeMessage,
+              Resume,
+              ResumeData,
+              ProfessionalProfile,
+              CareerConversation,
+              CareerMessage,
+              PersonaAnswer,
+              DocumentConversation,
+              DocumentMessage,
+              Document,
+            ],
+            synchronize: configService.get('NODE_ENV') !== 'production',
+          };
+        } else {
+          return {
+            type: 'postgres',
+            host: configService.get('DB_HOST', 'localhost'),
+            port: configService.get<number>('DB_PORT', 5432),
+            username: configService.get('DB_USERNAME', 'postgres'),
+            password: configService.get('DB_PASSWORD', 'postgres'),
+            database: configService.get('DB_NAME', 'hello_dreams_ai'),
+            entities: [
+              User,
+              RefreshToken,
+              ResumeConversation,
+              ResumeMessage,
+              Resume,
+              ResumeData,
+              ProfessionalProfile,
+              CareerConversation,
+              CareerMessage,
+              PersonaAnswer,
+              DocumentConversation,
+              DocumentMessage,
+              Document,
+            ],
+            synchronize: configService.get('NODE_ENV') !== 'production',
+          };
+        }
+      },
       inject: [ConfigService],
     }),
     AuthModule,
