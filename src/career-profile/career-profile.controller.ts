@@ -38,7 +38,11 @@ export class CareerProfileController {
   constructor(private readonly careerProfileService: CareerProfileService) {}
 
   @Post('conversations')
-  @ApiOperation({ summary: 'Create a new career profile conversation' })
+  @ApiOperation({
+    summary: 'Create a new career profile conversation',
+    description:
+      'Creates a new conversation for career profile discovery. **You must create a conversation before sending any messages.** After creation, use the returned conversation ID to send messages to `/career-profile/conversations/:id/messages`.',
+  })
   @ApiResponse({ status: 201, description: 'Conversation created successfully', type: CareerConversationResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: CreateCareerConversationDto })
@@ -106,7 +110,11 @@ export class CareerProfileController {
   }
 
   @Post('conversations/:id/messages')
-  @ApiOperation({ summary: 'Send a message in a career profile conversation' })
+  @ApiOperation({
+    summary: 'Send a message in a career profile conversation',
+    description:
+      'Sends a message in an existing career profile conversation and receives an AI response. **Note:** You must create a conversation first using `POST /career-profile/conversations` before you can send messages.',
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({ status: 201, description: 'Message sent and AI response received', type: CareerMessageResponseDto })
   @ApiResponse({ status: 404, description: 'Conversation not found' })

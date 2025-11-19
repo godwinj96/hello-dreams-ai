@@ -38,7 +38,11 @@ export class DocumentGeneratorController {
   ) {}
 
   @Post('conversations')
-  @ApiOperation({ summary: 'Create a new document conversation (cover letter or personal statement)' })
+  @ApiOperation({
+    summary: 'Create a new document conversation (cover letter or personal statement)',
+    description:
+      'Creates a new conversation for document generation (cover letter or personal statement). **You must create a conversation before sending any messages.** After creation, use the returned conversation ID to send messages to `/document-generator/conversations/:id/messages`.',
+  })
   @ApiResponse({ status: 201, description: 'Conversation created successfully', type: DocumentConversationResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: CreateDocumentConversationDto })
@@ -90,7 +94,11 @@ export class DocumentGeneratorController {
   }
 
   @Post('conversations/:id/messages')
-  @ApiOperation({ summary: 'Send a message in a document conversation' })
+  @ApiOperation({
+    summary: 'Send a message in a document conversation',
+    description:
+      'Sends a message in an existing document conversation and receives an AI response. **Note:** You must create a conversation first using `POST /document-generator/conversations` before you can send messages.',
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({ status: 201, description: 'Message sent and AI response received', type: DocumentMessageResponseDto })
   @ApiResponse({ status: 404, description: 'Conversation not found' })

@@ -43,7 +43,11 @@ export class ResumeBuilderController {
   constructor(private readonly resumeBuilderService: ResumeBuilderService) {}
 
   @Post('conversations')
-  @ApiOperation({ summary: 'Create a new resume conversation' })
+  @ApiOperation({
+    summary: 'Create a new resume conversation',
+    description:
+      'Creates a new conversation for resume building. **You must create a conversation before sending any messages.** After creation, use the returned conversation ID to send messages to `/resume-builder/conversations/:id/messages`.',
+  })
   @ApiResponse({ status: 201, description: 'Conversation created successfully', type: ResumeConversationResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: CreateResumeConversationDto })
@@ -135,7 +139,11 @@ export class ResumeBuilderController {
   }
 
   @Post('conversations/:id/messages')
-  @ApiOperation({ summary: 'Send a message in a resume conversation' })
+  @ApiOperation({
+    summary: 'Send a message in a resume conversation',
+    description:
+      'Sends a message in an existing resume conversation and receives an AI response. **Note:** You must create a conversation first using `POST /resume-builder/conversations` before you can send messages.',
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({ status: 201, description: 'Message sent and AI response received', type: ResumeMessageResponseDto })
   @ApiResponse({ status: 404, description: 'Conversation not found' })

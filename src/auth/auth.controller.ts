@@ -35,7 +35,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Register a new user',
     description:
-      'Creates a new user account with email and password. Returns JWT access token and refresh token upon successful registration.',
+      'Creates a new user account with email and password. Returns JWT access token and refresh token upon successful registration.\n\n**Important:** After registration, you will receive an `access_token` in the response. This token must be included in the `Authorization` header (format: `Bearer <access_token>`) for all protected API endpoints.',
   })
   @ApiBody({
     type: RegisterDto,
@@ -101,7 +101,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Login with email and password',
     description:
-      'Authenticates a user with email and password. Returns JWT access token and refresh token upon successful authentication.',
+      'Authenticates a user with email and password. Returns JWT access token and refresh token upon successful authentication.\n\n**Important:** After login, you will receive an `access_token` in the response. This token must be included in the `Authorization` header (format: `Bearer <access_token>`) for all protected API endpoints.',
   })
   @ApiBody({
     type: LoginDto,
@@ -282,7 +282,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Google OAuth callback',
     description:
-      'Callback endpoint for Google OAuth. This endpoint is called by Google after user authentication. Returns JWT access token and refresh token.',
+      'Callback endpoint for Google OAuth. This endpoint is called by Google after user authentication. Returns JWT access token and refresh token.\n\n**Important:** After authentication, you will receive an `access_token` in the response. This token must be included in the `Authorization` header (format: `Bearer <access_token>`) for all protected API endpoints.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
