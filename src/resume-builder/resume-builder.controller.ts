@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   HttpCode,
@@ -18,6 +19,7 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { ResumeBuilderService } from './resume-builder.service';
 import { CreateResumeConversationDto } from './dto/create-conversation.dto';
@@ -27,7 +29,10 @@ import {
   ResumeConversationResponseDto,
   ResumeMessageResponseDto,
   ResumeResponseDto,
+  PaginatedConversationsResponseDto,
+  ConversationWithPaginatedMessagesDto,
 } from './dto/resume-response.dto';
+import { PaginationQueryDto } from './dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('resume-builder')
@@ -50,26 +55,50 @@ export class ResumeBuilderController {
   }
 
   @Get('conversations')
-  @ApiOperation({ summary: 'Get all resume conversations for the current user' })
-  @ApiResponse({ status: 200, description: 'List of conversations', type: [ResumeConversationResponseDto] })
+  @ApiOperation({
+    summary: 'Get all resume conversations for the current user',
+    description: 'Returns a paginated list of conversations. Use query parameters `page` and `limit` to control pagination. Default: page=1, limit=10.',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (1-indexed). Default: 1', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of items per page. Default: 10, Max: 100', example: 10 })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of conversations',
+    type: PaginatedConversationsResponseDto,
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findAllConversations(
     @Request() req,
-  ): Promise<ResumeConversationResponseDto[]> {
-    return this.resumeBuilderService.findAllConversations(req.user.id);
+    @Query() pagination: PaginationQueryDto,
+  ): Promise<PaginatedConversationsResponseDto> {
+    return this.resumeBuilderService.findAllConversations(req.user.id, pagination);
   }
 
   @Get('conversations/:id')
-  @ApiOperation({ summary: 'Get a specific resume conversation by ID' })
+  @ApiOperation({
+    summary: 'Get a specific resume conversation by ID',
+    description: 'Returns conversation details with messages. Optionally paginate messages using query parameters `page` and `limit`. If pagination is not provided, all messages are returned (backward compatible).',
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 200, description: 'Conversation details', type: ResumeConversationResponseDto })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number for messages (1-indexed). If provided, messages will be paginated. Default: all messages returned', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of messages per page. Default: 10, Max: 100. Only used if page is provided', example: 10 })
+  @ApiResponse({
+    status: 200,
+    description: 'Conversation details with paginated messages (if pagination params provided)',
+    type: ConversationWithPaginatedMessagesDto,
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findOneConversation(
     @Param('id') id: string,
     @Request() req,
-  ): Promise<ResumeConversationResponseDto> {
-    return this.resumeBuilderService.findOneConversation(id, req.user.id);
+    @Query() messagesPagination?: PaginationQueryDto,
+  ): Promise<ConversationWithPaginatedMessagesDto> {
+    // Only pass pagination if at least one param is provided
+    const pagination = messagesPagination?.page || messagesPagination?.limit
+      ? messagesPagination
+      : undefined;
+    return this.resumeBuilderService.findOneConversation(id, req.user.id, pagination);
   }
 
   @Put('conversations/:id')

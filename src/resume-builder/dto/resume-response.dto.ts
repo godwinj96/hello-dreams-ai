@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { ConversationStatus } from '../enums/conversation-status.enum';
 import { MessageRole } from '../enums/message-role.enum';
+import { PaginatedResponseDto, PaginationMetaDto } from './pagination.dto';
 
 export class ResumeMessageResponseDto {
   @ApiProperty({ description: 'Message ID', example: 'uuid' })
@@ -60,5 +61,25 @@ export class ResumeResponseDto {
 
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt: Date;
+}
+
+export class PaginatedConversationsResponseDto extends PaginatedResponseDto<ResumeConversationResponseDto> {
+  @ApiProperty({
+    description: 'Array of conversations',
+    type: [ResumeConversationResponseDto],
+  })
+  data: ResumeConversationResponseDto[];
+
+  @ApiProperty({ description: 'Pagination metadata', type: PaginationMetaDto })
+  meta: PaginationMetaDto;
+}
+
+export class ConversationWithPaginatedMessagesDto extends ResumeConversationResponseDto {
+  @ApiProperty({
+    description: 'Pagination metadata for messages',
+    type: PaginationMetaDto,
+    required: false,
+  })
+  messagesMeta?: PaginationMetaDto;
 }
 

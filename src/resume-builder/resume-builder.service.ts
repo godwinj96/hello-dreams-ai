@@ -20,8 +20,10 @@ import {
   ResumeConversationResponseDto,
   ResumeMessageResponseDto,
   ResumeResponseDto,
+  ConversationWithPaginatedMessagesDto,
 } from './dto/resume-response.dto';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
+import { PaginationQueryDto, PaginationMetaDto, PaginatedResponseDto } from './dto/pagination.dto';
 
 @Injectable()
 export class ResumeBuilderService {
@@ -64,23 +66,46 @@ export class ResumeBuilderService {
     return this.mapConversationToDto(savedConversation);
   }
 
-  async findAllConversations(userId: string): Promise<ResumeConversationResponseDto[]> {
-    const conversations = await this.conversationRepository.find({
+  async findAllConversations(
+    userId: string,
+    pagination?: PaginationQueryDto,
+  ): Promise<PaginatedResponseDto<ResumeConversationResponseDto>> {
+    const page = pagination?.page || 1;
+    const limit = pagination?.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const [conversations, total] = await this.conversationRepository.findAndCount({
       where: { userId },
       order: { updatedAt: 'DESC' },
       relations: ['messages'],
+      skip,
+      take: limit,
     });
 
-    return conversations.map((conv) => this.mapConversationToDto(conv));
+    const totalPages = Math.ceil(total / limit);
+
+    const meta: PaginationMetaDto = {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasPrevious: page > 1,
+      hasNext: page < totalPages,
+    };
+
+    return {
+      data: conversations.map((conv) => this.mapConversationToDto(conv)),
+      meta,
+    };
   }
 
   async findOneConversation(
     id: string,
     userId: string,
-  ): Promise<ResumeConversationResponseDto> {
+    messagesPagination?: PaginationQueryDto,
+  ): Promise<ConversationWithPaginatedMessagesDto> {
     const conversation = await this.conversationRepository.findOne({
       where: { id },
-      relations: ['messages'],
     });
 
     if (!conversation) {
@@ -91,7 +116,50 @@ export class ResumeBuilderService {
       throw new ForbiddenException('You do not have access to this conversation');
     }
 
-    return this.mapConversationToDto(conversation);
+    // Get paginated messages if pagination is requested
+    let messages: ResumeMessage[] = [];
+    let messagesMeta: PaginationMetaDto | undefined;
+
+    if (messagesPagination) {
+      const page = messagesPagination.page || 1;
+      const limit = messagesPagination.limit || 10;
+      const skip = (page - 1) * limit;
+
+      const [paginatedMessages, total] = await this.messageRepository.findAndCount({
+        where: { conversationId: id },
+        order: { createdAt: 'ASC' },
+        skip,
+        take: limit,
+      });
+
+      messages = paginatedMessages;
+
+      const totalPages = Math.ceil(total / limit);
+      messagesMeta = {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasPrevious: page > 1,
+        hasNext: page < totalPages,
+      };
+    } else {
+      // If no pagination, return all messages (backward compatibility)
+      messages = await this.messageRepository.find({
+        where: { conversationId: id },
+        order: { createdAt: 'ASC' },
+      });
+    }
+
+    const conversationDto = this.mapConversationToDto({
+      ...conversation,
+      messages,
+    } as ResumeConversation);
+
+    return {
+      ...conversationDto,
+      messagesMeta,
+    };
   }
 
   async updateConversation(
