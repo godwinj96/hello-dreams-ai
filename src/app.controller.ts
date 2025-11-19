@@ -23,12 +23,6 @@ export class AppController {
     return this.appService.getHello();
   }
 
-  @Public()
-  @Post('ai')
-  generateAiResponse(@Body() body: { prompt: string }): string {
-    return this.appService.generateAiResponse(body.prompt);
-  }
-
   @Get('user-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.User, Role.Admin)

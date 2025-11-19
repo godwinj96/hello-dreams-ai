@@ -137,13 +137,112 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 All endpoints require JWT authentication.
 
 - `POST /resume-builder/conversations` - Create a new resume conversation
-- `GET /resume-builder/conversations` - List all conversations for the authenticated user
-- `GET /resume-builder/conversations/:id` - Get conversation details with messages
+- `GET /resume-builder/conversations` - List all conversations for the authenticated user (supports pagination)
+- `GET /resume-builder/conversations/:id` - Get conversation details with messages (supports message pagination)
 - `PUT /resume-builder/conversations/:id` - Update conversation metadata
 - `DELETE /resume-builder/conversations/:id` - Delete a conversation
 - `POST /resume-builder/conversations/:id/messages` - Send a message to the AI assistant
 - `GET /resume-builder/conversations/:id/resume` - Get generated resume for a conversation
 - `POST /resume-builder/conversations/:id/generate` - Manually trigger resume generation
+
+### Pagination
+
+Several GET endpoints support pagination to handle large datasets efficiently:
+
+#### GET /resume-builder/conversations
+
+Returns a paginated list of conversations. Use query parameters to control pagination:
+
+**Query Parameters:**
+- `page` (optional, number): Page number (1-indexed). Default: `1`
+- `limit` (optional, number): Number of items per page. Default: `10`, Maximum: `100`
+
+**Example Request:**
+```
+GET /resume-builder/conversations?page=1&limit=20
+```
+
+**Response Format:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "title": "My Resume",
+      "status": "active",
+      "targetJobTitle": "Software Engineer",
+      "targetIndustry": "Technology",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "messages": [...]
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 50,
+    "totalPages": 3,
+    "hasPrevious": false,
+    "hasNext": true
+  }
+}
+```
+
+#### GET /resume-builder/conversations/:id
+
+Returns conversation details with messages. Optionally paginate messages using query parameters:
+
+**Query Parameters:**
+- `page` (optional, number): Page number for messages (1-indexed). If not provided, all messages are returned (backward compatible)
+- `limit` (optional, number): Number of messages per page. Default: `10`, Maximum: `100`. Only used if `page` is provided
+
+**Example Requests:**
+```
+# Get all messages (backward compatible)
+GET /resume-builder/conversations/:id
+
+# Get paginated messages
+GET /resume-builder/conversations/:id?page=1&limit=10
+```
+
+**Response Format (with pagination):**
+```json
+{
+  "id": "uuid",
+  "title": "My Resume",
+  "status": "active",
+  "targetJobTitle": "Software Engineer",
+  "targetIndustry": "Technology",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "messages": [
+    {
+      "id": "uuid",
+      "role": "user",
+      "content": "Hello",
+      "createdAt": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "messagesMeta": {
+    "page": 1,
+    "limit": 10,
+    "total": 25,
+    "totalPages": 3,
+    "hasPrevious": false,
+    "hasNext": true
+  }
+}
+```
+
+**Note:** If pagination parameters are not provided, the endpoint returns all messages (maintains backward compatibility with existing frontend implementations).
+
+### Swagger Documentation
+
+For detailed API documentation with interactive testing, visit `/api` when the application is running. The Swagger UI includes:
+- Complete endpoint descriptions
+- Request/response schemas
+- Pagination parameter documentation
+- Try-it-out functionality
 
 ## License
 
