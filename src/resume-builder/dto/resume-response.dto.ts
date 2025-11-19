@@ -68,10 +68,10 @@ export class PaginatedConversationsResponseDto extends PaginatedResponseDto<Resu
     description: 'Array of conversations',
     type: [ResumeConversationResponseDto],
   })
-  data: ResumeConversationResponseDto[];
+  declare data: ResumeConversationResponseDto[];
 
   @ApiProperty({ description: 'Pagination metadata', type: PaginationMetaDto })
-  meta: PaginationMetaDto;
+  declare meta: PaginationMetaDto;
 }
 
 export class ConversationWithPaginatedMessagesDto extends ResumeConversationResponseDto {
