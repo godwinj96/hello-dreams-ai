@@ -23,6 +23,7 @@ async function bootstrap() {
         'http://127.0.0.1:5173',
         'http://127.0.0.1:4200',
         'http://127.0.0.1:8080',
+        'https://hello-dreams-ai.vercel.app',
       ];
 
   app.enableCors({
