@@ -11,6 +11,8 @@ import { RefreshTokenService } from './refresh-token.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Role } from '../users/enums/role.enum';
+import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { DashboardEventService } from '../admin/services/dashboard-event.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +21,8 @@ export class AuthService {
     private jwtService: JwtService,
     private refreshTokenService: RefreshTokenService,
     private configService: ConfigService,
+    private usageTrackingService: UsageTrackingService,
+    private dashboardEventService: DashboardEventService,
   ) {}
 
   private async generateTokens(user: any) {
@@ -54,7 +58,19 @@ export class AuthService {
       ...registerDto,
       password: hashedPassword,
       role: Role.User,
+      isActive: true, // New users are active by default
     });
+
+    // Track user registration
+    this.usageTrackingService
+      .trackAction(user.id, 'user_registered', 'auth', {
+        email: user.email,
+        role: user.role,
+      })
+      .catch((err) => console.error('Failed to track registration:', err));
+
+    // Emit event for dashboard
+    this.dashboardEventService.emitUserRegistered(user.id, user.email);
 
     return this.generateTokens(user);
   }
@@ -65,6 +81,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException('User account is inactive');
+    }
+
     const isPasswordValid = await bcrypt.compare(
       loginDto.password,
       user.password,
@@ -73,10 +93,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Track user login
+    this.usageTrackingService
+      .trackAction(user.id, 'user_login', 'auth')
+      .catch((err) => console.error('Failed to track login:', err));
+
     return this.generateTokens(user);
   }
 
   async validateGoogleUser(user: any) {
+    if (!user.isActive) {
+      throw new UnauthorizedException('User account is inactive');
+    }
     return this.generateTokens(user);
   }
 
@@ -89,6 +117,10 @@ export class AuthService {
     const user = await this.usersService.findOne(token.userId);
     if (!user) {
       throw new UnauthorizedException('User not found');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('User account is inactive');
     }
 
     // Revoke the old refresh token (token rotation)

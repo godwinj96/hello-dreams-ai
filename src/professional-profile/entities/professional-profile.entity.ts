@@ -32,6 +32,44 @@ export class ProfessionalProfile {
   };
 
   @Column({ type: 'jsonb', nullable: true })
+  basicInfo: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    country?: string;
+    state?: string;
+    city?: string;
+    linkedIn?: string;
+  };
+
+  @Column({ type: 'jsonb', nullable: true })
+  targetJob: {
+    targetJobTitle?: string;
+    careerGoal?: string;
+    salaryExpectation?: string;
+  };
+
+  @Column({ type: 'jsonb', nullable: true })
+  cvMetadata: {
+    pastJobTitles?: string[];
+    experienceLevel?: string;
+    industries?: string[];
+    keywords?: string[];
+    workHistory?: Array<{
+      jobTitle?: string;
+      company?: string;
+      duration?: string;
+      responsibilities?: string[];
+    }>;
+  };
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  interactionMode: 'text' | 'voice';
+
+  @Column({ type: 'text', nullable: true })
+  cvUploadUrl: string;
+
+  @Column({ type: 'jsonb', nullable: true })
   persona: {
     communicationStyle?: string;
     tone?: string;
@@ -39,6 +77,24 @@ export class ProfessionalProfile {
     writingStyle?: string;
     personalityTraits?: string[];
     preferences?: Record<string, any>;
+  };
+
+  @Column({ type: 'jsonb', nullable: true })
+  personaData: {
+    currentPersona?: string;
+    idealPersona?: string;
+    transformationPath?: {
+      fromPersona?: string;
+      toPersona?: string;
+      playbook?: {
+        speakingStyle?: string[];
+        dressingForImpact?: string[];
+        workplaceBehaviour?: string[];
+        meetingMastery?: string[];
+        digitalPresence?: string[];
+      };
+    };
+    appliedPersona?: boolean;
   };
 
   @Column({ type: 'jsonb', nullable: true })

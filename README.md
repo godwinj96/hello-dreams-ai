@@ -53,20 +53,24 @@ Create a `.env` file in the root directory based on `.env.example`. Required env
 - `JWT_SECRET` - Secret key for JWT tokens
 - `JWT_EXPIRATION` - Token expiration time (default: 15m)
 
-**AI Provider:**
-- `AI_PROVIDER` - Set to `huggingface` for development or `ollama` for production (default: huggingface)
+**AI Provider (Chat & Documents):**
+- `OPENAI_API_KEY` - Your OpenAI API key. When set, all chat/document features (resume builder, career profile, LinkedIn optimization, document generator) use OpenAI/ChatGPT.
+- `OPENAI_CHAT_MODEL` - Optional. Overrides the default chat model (default: `gpt-4.1-mini`).
+- `AI_PROVIDER` - Fallback provider for chat **only when `OPENAI_API_KEY` is not set**. Set to `huggingface` for development or `ollama` for local models (default: `huggingface`).
 
-**HuggingFace (Development):**
-- `HUGGINGFACE_API_KEY` - Your HuggingFace API key (get from https://huggingface.co/settings/tokens)
+**Embeddings:**
+- Uses OpenAI `text-embedding-3-small` automatically when `OPENAI_API_KEY` is set (no extra env needed).
 
-**Ollama (Production):**
-- `OLLAMA_BASE_URL` - Ollama server URL (default: http://localhost:11434)
-- `OLLAMA_MODEL` - Model name to use (default: llama3.1:8b)
+**Voice (Speech-to-Text & Text-to-Speech):**
+- Uses OpenAI `whisper-1` and `tts-1` automatically when `OPENAI_API_KEY` is set.
 
-**Note:** For production, ensure Ollama is installed and running locally. Pull the model with:
-```bash
-ollama pull llama3.1:8b
-```
+**Image & Headshot Generation:**
+- Primary provider: OpenAI Images (`gpt-image-1`) via `OPENAI_API_KEY`.
+- Fallback providers (optional):
+  - `GEMINI_API_KEY` - Enables Gemini 2.5 Flash Image as a fallback for headshots.
+  - `HUGGINGFACE_API_KEY` - Enables HuggingFace image-to-image as a final fallback for headshots.
+
+> Note: `REPLICATE_API_TOKEN` is supported only for an experimental/legacy headshot path and is not used by the main headshot generator.
 
 ## Compile and run the project
 

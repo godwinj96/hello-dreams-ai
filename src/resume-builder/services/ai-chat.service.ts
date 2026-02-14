@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { HfInference } from '@huggingface/inference';
 import axios from 'axios';
 import { MessageRole } from '../enums/message-role.enum';
+import { OpenAIService } from '../../shared/services/openai.service';
+import { PromptInjectionGuardService } from '../../shared/services/prompt-injection-guard.service';
 
 export interface ChatMessage {
   role: MessageRole;
@@ -16,8 +18,16 @@ export class AiChatService {
   private readonly hfClient: HfInference | null = null;
   private readonly ollamaBaseUrl: string;
   private readonly ollamaModel: string;
+  private readonly useOpenAI: boolean;
+  private readonly openAIService?: OpenAIService;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    openAIService?: OpenAIService,
+    private promptInjectionGuard?: PromptInjectionGuardService,
+  ) {
+    this.openAIService = openAIService;
+    this.useOpenAI = !!this.openAIService && !!this.configService.get<string>('OPENAI_API_KEY');
     this.aiProvider = this.configService.get<string>(
       'AI_PROVIDER',
       'huggingface',
@@ -30,6 +40,10 @@ export class AiChatService {
       'OLLAMA_MODEL',
       'llama3.1:8b',
     );
+
+    // const currentDate = new Date().toISOString().split('T')[0];
+// e.g. "2026-01-07"
+
 
     if (this.aiProvider === 'huggingface') {
       const apiKey = this.configService.get<string>('HUGGINGFACE_API_KEY');
@@ -44,11 +58,37 @@ export class AiChatService {
   }
 
   async chat(messages: ChatMessage[]): Promise<string> {
+    const result = await this.chatWithUsage(messages);
+    return result.content;
+  }
+
+  async chatWithUsage(messages: ChatMessage[]): Promise<{
+    content: string;
+    usage: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    };
+    model: string;
+    provider: 'openai' | 'huggingface' | 'ollama';
+  }> {
     try {
+      // Sanitize user messages to prevent prompt injection
+      const sanitizedMessages = this.sanitizeMessages(messages);
+
+      // Prefer OpenAI if available (to use ChatGPT credits)
+      if (this.useOpenAI && this.openAIService) {
+        const result = await this.openAIService.chatWithUsage(sanitizedMessages);
+        return {
+          ...result,
+          provider: 'openai',
+        };
+      }
+      
       if (this.aiProvider === 'huggingface') {
-        return await this.chatWithHuggingFace(messages);
+        return await this.chatWithHuggingFace(sanitizedMessages);
       } else {
-        return await this.chatWithOllama(messages);
+        return await this.chatWithOllama(sanitizedMessages);
       }
     } catch (error) {
       this.logger.error('Error in AI chat service', error);
@@ -56,7 +96,16 @@ export class AiChatService {
     }
   }
 
-  private async chatWithHuggingFace(messages: ChatMessage[]): Promise<string> {
+  private async chatWithHuggingFace(messages: ChatMessage[]): Promise<{
+    content: string;
+    usage: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    };
+    model: string;
+    provider: 'huggingface';
+  }> {
     if (!this.hfClient) {
       throw new Error(
         'HuggingFace client not initialized. Please set HUGGINGFACE_API_KEY.',
@@ -74,17 +123,42 @@ export class AiChatService {
         temperature: 0.7,
       });
 
-      return (
+      const content =
         response.choices[0]?.message?.content ||
-        'I apologize, but I could not generate a response.'
-      );
+        'I apologize, but I could not generate a response.';
+
+      // Estimate tokens for HuggingFace (they don't always provide usage)
+      const promptText = formattedMessages.map((m) => m.content).join(' ');
+      const estimatedPromptTokens = Math.ceil(promptText.length / 4);
+      const estimatedCompletionTokens = Math.ceil(content.length / 4);
+      const totalTokens = estimatedPromptTokens + estimatedCompletionTokens;
+
+      return {
+        content,
+        usage: {
+          promptTokens: estimatedPromptTokens,
+          completionTokens: estimatedCompletionTokens,
+          totalTokens,
+        },
+        model: 'meta-llama/Llama-3.1-8B-Instruct',
+        provider: 'huggingface',
+      };
     } catch (error) {
       this.logger.error('HuggingFace API error', error);
       throw error;
     }
   }
 
-  private async chatWithOllama(messages: ChatMessage[]): Promise<string> {
+  private async chatWithOllama(messages: ChatMessage[]): Promise<{
+    content: string;
+    usage: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    };
+    model: string;
+    provider: 'ollama';
+  }> {
     try {
       // Format messages for Ollama API
       const formattedMessages = this.formatMessagesForOllama(messages);
@@ -101,10 +175,26 @@ export class AiChatService {
         },
       );
 
-      return (
+      const content =
         response.data.message?.content ||
-        'I apologize, but I could not generate a response.'
-      );
+        'I apologize, but I could not generate a response.';
+
+      // Estimate tokens for Ollama (they don't provide usage in response)
+      const promptText = formattedMessages.map((m) => m.content).join(' ');
+      const estimatedPromptTokens = Math.ceil(promptText.length / 4);
+      const estimatedCompletionTokens = Math.ceil(content.length / 4);
+      const totalTokens = estimatedPromptTokens + estimatedCompletionTokens;
+
+      return {
+        content,
+        usage: {
+          promptTokens: estimatedPromptTokens,
+          completionTokens: estimatedCompletionTokens,
+          totalTokens,
+        },
+        model: this.ollamaModel,
+        provider: 'ollama',
+      };
     } catch (error) {
       this.logger.error('Ollama API error', error);
       if (axios.isAxiosError(error)) {
@@ -198,8 +288,31 @@ export class AiChatService {
     return formatted;
   }
 
+  private sanitizeMessages(messages: ChatMessage[]): ChatMessage[] {
+    if (!this.promptInjectionGuard) {
+      return messages;
+    }
+
+    return messages.map((msg) => {
+      // Only sanitize user messages, not system or assistant messages
+      if (msg.role === MessageRole.User) {
+        const checkResult = this.promptInjectionGuard!.checkInput(msg.content);
+        if (!checkResult.isSafe) {
+          this.logger.warn('Suspicious input detected in chat message', {
+            patterns: checkResult.suspiciousPatterns,
+          });
+          return {
+            ...msg,
+            content: checkResult.sanitizedInput || msg.content,
+          };
+        }
+      }
+      return msg;
+    });
+  }
+
   private getSystemPrompt(): string {
-    // Get current date and time
+    // Get current date and time (used in the prompt)
     const now = new Date();
     const currentDate = now.toLocaleDateString('en-US', {
       weekday: 'long',

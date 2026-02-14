@@ -22,6 +22,16 @@ import {
   DocumentResponseDto,
 } from './dto/document-response.dto';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
+import { UpdateDocumentDto, PatchDocumentDto } from './dto/update-document.dto';
+import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { DashboardEventService } from '../admin/services/dashboard-event.service';
+import { calculateCost } from '../shared/utils/cost-calculator.util';
+import { ConfigService } from '@nestjs/config';
+import { ContextIndexerService } from '../shared/services/context-indexer.service';
+import { UserContextEmbedding } from '../shared/entities/user-context-embedding.entity';
+import { Resume } from '../resume-builder/entities/resume.entity';
+import { ResumeData } from '../resume-builder/entities/resume-data.entity';
+import { UserContextService } from './services/user-context.service';
 
 @Injectable()
 export class DocumentGeneratorServiceMain {
@@ -37,6 +47,17 @@ export class DocumentGeneratorServiceMain {
     private aiChatService: AiChatService,
     private documentGenerator: DocumentGeneratorService,
     private professionalProfileService: ProfessionalProfileService,
+    private usageTrackingService: UsageTrackingService,
+    private dashboardEventService: DashboardEventService,
+    private configService: ConfigService,
+    private contextIndexerService: ContextIndexerService,
+    private userContextService: UserContextService,
+    @InjectRepository(UserContextEmbedding)
+    private embeddingRepository: Repository<UserContextEmbedding>,
+    @InjectRepository(Resume)
+    private resumeRepository: Repository<Resume>,
+    @InjectRepository(ResumeData)
+    private resumeDataRepository: Repository<ResumeData>,
   ) {}
 
   async createConversation(
@@ -55,13 +76,42 @@ export class DocumentGeneratorServiceMain {
 
     const savedConversation = await this.conversationRepository.save(conversation);
 
+    // Backfill any missing embeddings for this user (documents, resumes, persona)
+    await this.backfillUserEmbeddings(userId);
+
+    // Build context and name for greeting
+    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+    const name = profile.basicInfo?.name || 'there';
+    const comprehensiveContext = await this.userContextService.buildComprehensiveContext(
+      userId,
+      createDto.jobDescription || '',
+    );
+
     // Send initial greeting from AI based on document type
-    const initialGreeting = this.getInitialGreeting(createDto.documentType);
+    let initialGreeting: string;
+    if (createDto.documentType === DocumentType.CoverLetter) {
+      if (createDto.jobDescription) {
+        initialGreeting = `Hi ${name}, I see you've provided a job description. I'll analyze it and use your past resumes/documents to tailor a cover letter. I’ll start with what I know, but tell me if there are specific achievements you want highlighted.`;
+      } else {
+        initialGreeting = `Hi ${name}, I’ll draft a strong cover letter using what I already know about you. If you share the job description, I can make it even sharper. What role and company are you targeting?`;
+      }
+    } else {
+      initialGreeting = this.getInitialGreeting(createDto.documentType);
+    }
     await this.addMessage(
       savedConversation.id,
       MessageRole.Assistant,
       initialGreeting,
     );
+
+    // Track conversation creation
+    this.usageTrackingService
+      .trackAction(userId, 'conversation_created', 'document-generator', {
+        conversationId: savedConversation.id,
+        documentType: createDto.documentType,
+      })
+      .catch((err) => console.error('Failed to track conversation creation:', err));
+    this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'conversation_created');
 
     return this.mapConversationToDto(savedConversation);
   }
@@ -165,10 +215,13 @@ export class DocumentGeneratorServiceMain {
       ...chatMessages,
     ];
 
-    // Get AI response
+    // Get AI response with usage tracking
     let aiResponse: string;
+    let usageData: { usage: any; model: string; provider: string } | null = null;
     try {
-      aiResponse = await this.aiChatService.chat(messagesWithSystem);
+      const result = await this.aiChatService.chatWithUsage(messagesWithSystem);
+      aiResponse = result.content;
+      usageData = result;
     } catch (error) {
       this.logger.error('Error getting AI response', error);
       throw new Error('Failed to get AI response. Please try again.');
@@ -202,6 +255,44 @@ export class DocumentGeneratorServiceMain {
         // Don't throw - the message was already saved
       }
     }
+
+    // Track usage with costs
+    if (usageData) {
+      const ngnToUsdRate = this.configService.get<number>('NGN_TO_USD_RATE', 1500);
+      const costCalculation = calculateCost(
+        usageData.model,
+        {
+          promptTokens: usageData.usage.promptTokens,
+          completionTokens: usageData.usage.completionTokens,
+          totalTokens: usageData.usage.totalTokens,
+        },
+        ngnToUsdRate,
+      );
+
+      this.usageTrackingService
+        .trackUsageWithCosts(
+          userId,
+          'message_sent',
+          'document-generator',
+          costCalculation.tokensUsed,
+          costCalculation.costUsd,
+          costCalculation.costNgn,
+          {
+            conversationId,
+            model: usageData.model,
+            provider: usageData.provider,
+          },
+        )
+        .catch((err) => console.error('Failed to track usage:', err));
+    } else {
+      // Fallback to old tracking if usage data not available
+      this.usageTrackingService
+        .trackAction(userId, 'message_sent', 'document-generator', {
+          conversationId,
+        })
+        .catch((err) => console.error('Failed to track message:', err));
+    }
+    this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'message_sent');
 
     return this.mapMessageToDto(assistantMessage);
   }
@@ -261,15 +352,40 @@ export class DocumentGeneratorServiceMain {
       existingDocument.content = documentContent;
       existingDocument.version += 1;
       const updated = await this.documentRepository.save(existingDocument);
+      
+      // Index document embedding
+      await this.contextIndexerService.indexDocument(updated.id, userId, updated.content);
+      
+      // Track document generation
+      this.usageTrackingService
+        .trackAction(userId, 'document_generated', 'document-generator', {
+          conversationId,
+          documentType: conversation.documentType,
+          version: updated.version,
+        })
+        .catch((err) => console.error('Failed to track document generation:', err));
+      this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'document_generated');
+      
       return this.mapDocumentToDto(updated);
     } else {
       // Create new document
-      return await this.generateAndSaveDocument(
+      const result = await this.generateAndSaveDocument(
         conversationId,
         userId,
         conversation,
         messagesWithSystem,
       );
+      
+      // Track document generation
+      this.usageTrackingService
+        .trackAction(userId, 'document_generated', 'document-generator', {
+          conversationId,
+          documentType: conversation.documentType,
+        })
+        .catch((err) => console.error('Failed to track document generation:', err));
+      this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'document_generated');
+      
+      return result;
     }
   }
 
@@ -302,6 +418,60 @@ export class DocumentGeneratorServiceMain {
     }
 
     return this.mapDocumentToDto(document);
+  }
+
+  async updateDocument(
+    conversationId: string,
+    userId: string,
+    updateDto: UpdateDocumentDto,
+  ): Promise<DocumentResponseDto> {
+    const doc = await this.documentRepository.findOne({ where: { conversationId } });
+    if (!doc) {
+      throw new NotFoundException(`Document for conversation ${conversationId} not found`);
+    }
+    if (doc.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this document');
+    }
+
+    doc.documentType = updateDto.documentType;
+    doc.content = updateDto.content;
+    doc.version += 1;
+    const saved = await this.documentRepository.save(doc);
+    return this.mapDocumentToDto(saved);
+  }
+
+  async patchDocument(
+    conversationId: string,
+    userId: string,
+    patchDto: PatchDocumentDto,
+  ): Promise<DocumentResponseDto> {
+    const doc = await this.documentRepository.findOne({ where: { conversationId } });
+    if (!doc) {
+      throw new NotFoundException(`Document for conversation ${conversationId} not found`);
+    }
+    if (doc.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this document');
+    }
+
+    doc.documentType = patchDto.documentType || doc.documentType;
+    doc.content = {
+      ...(doc.content || {}),
+      ...(patchDto.content || {}),
+    };
+    doc.version += 1;
+    const saved = await this.documentRepository.save(doc);
+    return this.mapDocumentToDto(saved);
+  }
+
+  async deleteDocument(conversationId: string, userId: string): Promise<void> {
+    const doc = await this.documentRepository.findOne({ where: { conversationId } });
+    if (!doc) {
+      throw new NotFoundException(`Document for conversation ${conversationId} not found`);
+    }
+    if (doc.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this document');
+    }
+    await this.documentRepository.remove(doc);
   }
 
   private async addMessage(
@@ -344,6 +514,9 @@ export class DocumentGeneratorServiceMain {
     } as Partial<Document>);
 
     const saved = await this.documentRepository.save(document);
+
+    // Index document embedding
+    await this.contextIndexerService.indexDocument(saved.id, userId, saved.content);
 
     // Mark section as complete
     if (conversation.documentType === DocumentType.CoverLetter) {
@@ -476,6 +649,60 @@ When ready, generate a complete, polished personal statement.`;
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     };
+  }
+
+  /**
+   * Backfill embeddings for user resumes, documents, and persona if missing
+   */
+  private async backfillUserEmbeddings(userId: string): Promise<void> {
+    // Backfill resumes
+    const resumes = await this.resumeRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+
+    for (const resume of resumes) {
+      const exists = await this.embeddingRepository.findOne({
+        where: { userId, contentType: 'resume', contentId: resume.id },
+      });
+      if (!exists) {
+        const resumeData = await this.resumeDataRepository.findOne({
+          where: { resumeId: resume.id },
+        });
+        if (resumeData) {
+          await this.contextIndexerService.indexResume(resume.id, userId, resumeData);
+        } else {
+          await this.contextIndexerService.indexResume(resume.id, userId, resume.content);
+        }
+      }
+    }
+
+    // Backfill documents
+    const documents = await this.documentRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+    for (const doc of documents) {
+      const exists = await this.embeddingRepository.findOne({
+        where: { userId, contentType: 'document', contentId: doc.id },
+      });
+      if (!exists) {
+        await this.contextIndexerService.indexDocument(doc.id, userId, doc.content);
+      }
+    }
+
+    // Backfill persona/profile embedding if missing
+    const personaEmbedding = await this.embeddingRepository.findOne({
+      where: { userId, contentType: 'profile', contentId: userId },
+    });
+    if (!personaEmbedding) {
+      const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+      await this.contextIndexerService.indexPersona(userId, {
+        persona: profile.persona,
+        personaData: profile.personaData,
+        careerGoals: profile.careerGoals,
+      });
+    }
   }
 }
 

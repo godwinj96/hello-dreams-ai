@@ -104,10 +104,87 @@ export class ProfessionalProfileService {
     return await this.profileRepository.save(profile);
   }
 
+  async updateBasicInfo(
+    userId: string,
+    basicInfo: Partial<ProfessionalProfile['basicInfo']>,
+  ): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    
+    profile.basicInfo = {
+      ...profile.basicInfo,
+      ...basicInfo,
+    };
+
+    return await this.profileRepository.save(profile);
+  }
+
+  async updateTargetJob(
+    userId: string,
+    targetJob: Partial<ProfessionalProfile['targetJob']>,
+  ): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    
+    profile.targetJob = {
+      ...profile.targetJob,
+      ...targetJob,
+    };
+
+    return await this.profileRepository.save(profile);
+  }
+
+  async updateCvMetadata(
+    userId: string,
+    cvMetadata: Partial<ProfessionalProfile['cvMetadata']>,
+  ): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    
+    profile.cvMetadata = {
+      ...profile.cvMetadata,
+      ...cvMetadata,
+    };
+
+    return await this.profileRepository.save(profile);
+  }
+
+  async updatePersonaData(
+    userId: string,
+    personaData: Partial<ProfessionalProfile['personaData']>,
+  ): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    
+    profile.personaData = {
+      ...profile.personaData,
+      ...personaData,
+    };
+
+    return await this.profileRepository.save(profile);
+  }
+
+  async setInteractionMode(
+    userId: string,
+    mode: 'text' | 'voice',
+  ): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    profile.interactionMode = mode;
+    return await this.profileRepository.save(profile);
+  }
+
+  async setCvUploadUrl(
+    userId: string,
+    url: string,
+  ): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    profile.cvUploadUrl = url;
+    return await this.profileRepository.save(profile);
+  }
+
   async getProfileForGeneration(userId: string): Promise<{
     careerGoals: any;
     persona: any;
     extractedData: any;
+    basicInfo?: any;
+    targetJob?: any;
+    personaData?: any;
   }> {
     const profile = await this.getProfile(userId);
     
@@ -115,6 +192,9 @@ export class ProfessionalProfileService {
       careerGoals: profile.careerGoals || {},
       persona: profile.persona || {},
       extractedData: profile.extractedData || {},
+      basicInfo: profile.basicInfo || {},
+      targetJob: profile.targetJob || {},
+      personaData: profile.personaData || {},
     };
   }
 

@@ -41,8 +41,8 @@ export class Document {
   })
   documentType: DocumentType;
 
-  @Column('text')
-  content: string;
+  @Column({ type: 'jsonb' })
+  content: Record<string, any>;
 
   @Column({ default: 1 })
   version: number;

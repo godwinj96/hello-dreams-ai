@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +15,7 @@ import { UpdateCareerConversationDto } from './dto/update-conversation.dto';
 import { ConversationStatus } from '../resume-builder/enums/conversation-status.enum';
 import { MessageRole } from '../resume-builder/enums/message-role.enum';
 import { AiChatService, ChatMessage } from '../resume-builder/services/ai-chat.service';
+import { OpenAIService } from '../shared/services/openai.service';
 import {
   CareerConversationResponseDto,
   CareerMessageResponseDto,
@@ -21,6 +23,14 @@ import {
 } from './dto/career-profile-response.dto';
 import { CareerProfileExtractorService } from './services/career-profile-extractor.service';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
+import { VoiceService } from '../shared/services/voice.service';
+import { SupabaseStorageService } from '../shared/services/supabase-storage.service';
+import { CvParserService } from './services/cv-parser.service';
+import { CareerProfileConfirmationDto } from './dto/confirmation.dto';
+import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { DashboardEventService } from '../admin/services/dashboard-event.service';
+import { calculateCost } from '../shared/utils/cost-calculator.util';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class CareerProfileService {
@@ -32,8 +42,15 @@ export class CareerProfileService {
     @InjectRepository(CareerMessage)
     private messageRepository: Repository<CareerMessage>,
     private aiChatService: AiChatService,
+    private openAIService: OpenAIService,
     private profileExtractor: CareerProfileExtractorService,
     private professionalProfileService: ProfessionalProfileService,
+    private voiceService: VoiceService,
+    private supabaseStorageService: SupabaseStorageService,
+    private cvParserService: CvParserService,
+    private usageTrackingService: UsageTrackingService,
+    private dashboardEventService: DashboardEventService,
+    private configService: ConfigService,
   ) {}
 
   async createConversation(
@@ -48,13 +65,26 @@ export class CareerProfileService {
 
     const savedConversation = await this.conversationRepository.save(conversation);
 
+    // Set interaction mode if provided
+    if (createDto.interactionMode) {
+      await this.professionalProfileService.setInteractionMode(userId, createDto.interactionMode);
+    }
+
     // Send initial greeting from AI
-    const initialGreeting = "Hello! I'm here to help you discover and articulate your career goals and professional profile. Let's start by understanding what you're looking for in your next role. What job title or type of position are you targeting?";
+    const initialGreeting = "Hi Dreamer! I'm here to help you discover and articulate your career goals and professional profile. Let's start by understanding what you're looking for in your next role. What job title or type of position are you targeting?";
     await this.addMessage(
       savedConversation.id,
       MessageRole.Assistant,
       initialGreeting,
     );
+
+    // Track conversation creation
+    this.usageTrackingService
+      .trackAction(userId, 'conversation_created', 'career-profile', {
+        conversationId: savedConversation.id,
+      })
+      .catch((err) => console.error('Failed to track conversation creation:', err));
+    this.dashboardEventService.emitFeatureUsed(userId, 'career-profile', 'conversation_created');
 
     return this.mapConversationToDto(savedConversation);
   }
@@ -178,10 +208,13 @@ export class CareerProfileService {
       ...chatMessages,
     ];
 
-    // Get AI response
+    // Get AI response with usage tracking
     let aiResponse: string;
+    let usageData: { usage: any; model: string; provider: string } | null = null;
     try {
-      aiResponse = await this.aiChatService.chat(messagesWithSystem);
+      const result = await this.aiChatService.chatWithUsage(messagesWithSystem);
+      aiResponse = result.content;
+      usageData = result;
     } catch (error) {
       this.logger.error('Error getting AI response', error);
       throw new Error('Failed to get AI response. Please try again.');
@@ -194,12 +227,207 @@ export class CareerProfileService {
       aiResponse,
     );
 
-    // Extract and update profile data periodically (every few messages)
-    if (messages.length % 5 === 0) {
-      await this.profileExtractor.extractAndUpdateProfile(userId, messagesWithSystem);
+    // Extract and update profile data after each message (for structured collection)
+    await this.extractStructuredDataFromConversation(userId, messagesWithSystem);
+
+    // Track usage with costs
+    if (usageData) {
+      const ngnToUsdRate = this.configService.get<number>('NGN_TO_USD_RATE', 1500);
+      const costCalculation = calculateCost(
+        usageData.model,
+        {
+          promptTokens: usageData.usage.promptTokens,
+          completionTokens: usageData.usage.completionTokens,
+          totalTokens: usageData.usage.totalTokens,
+        },
+        ngnToUsdRate,
+      );
+
+      this.usageTrackingService
+        .trackUsageWithCosts(
+          userId,
+          'message_sent',
+          'career-profile',
+          costCalculation.tokensUsed,
+          costCalculation.costUsd,
+          costCalculation.costNgn,
+          {
+            conversationId,
+            model: usageData.model,
+            provider: usageData.provider,
+          },
+        )
+        .catch((err) => console.error('Failed to track usage:', err));
+    } else {
+      // Fallback to old tracking if usage data not available
+      this.usageTrackingService
+        .trackAction(userId, 'message_sent', 'career-profile', {
+          conversationId,
+        })
+        .catch((err) => console.error('Failed to track message:', err));
     }
+    this.dashboardEventService.emitFeatureUsed(userId, 'career-profile', 'message_sent');
 
     return this.mapMessageToDto(assistantMessage);
+  }
+
+  async uploadCv(
+    conversationId: string,
+    userId: string,
+    file: Express.Multer.File,
+  ): Promise<{ cvUploadUrl: string; cvMetadata: any }> {
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: conversationId },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Conversation with ID ${conversationId} not found`,
+      );
+    }
+
+    if (conversation.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this conversation');
+    }
+
+    // Validate file type
+    const allowedMimeTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+    ];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Only PDF and DOCX files are allowed');
+    }
+
+    // Upload to Supabase
+    const cvUploadUrl = await this.supabaseStorageService.uploadFile(
+      file,
+      'cvs',
+      userId,
+    );
+
+    // Parse CV and extract metadata
+    const cvMetadata = await this.cvParserService.parseCv(file, userId);
+
+    // Save URL to profile
+    await this.professionalProfileService.setCvUploadUrl(userId, cvUploadUrl);
+
+    // Add confirmation message
+    await this.addMessage(
+      conversationId,
+      MessageRole.Assistant,
+      "Great! I've uploaded and analyzed your CV. I can see your experience and will use this to personalize your journey. Is there anything else you'd like me to know about your career journey?",
+    );
+
+    return { cvUploadUrl, cvMetadata };
+  }
+
+  async sendVoiceMessage(
+    conversationId: string,
+    userId: string,
+    audioFile: Express.Multer.File,
+  ): Promise<CareerMessageResponseDto> {
+    // Transcribe audio to text
+    const transcribedText = await this.voiceService.speechToText(audioFile);
+
+    // Send as regular message
+    const messageDto = { content: transcribedText };
+    const response = await this.sendMessage(conversationId, userId, messageDto);
+
+    return response;
+  }
+
+  async getConfirmation(
+    conversationId: string,
+    userId: string,
+  ): Promise<CareerProfileConfirmationDto> {
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: conversationId },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException(
+        `Conversation with ID ${conversationId} not found`,
+      );
+    }
+
+    if (conversation.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this conversation');
+    }
+
+    const profile = await this.professionalProfileService.getProfile(userId);
+
+    return {
+      basicInfo: profile.basicInfo || {},
+      targetJob: profile.targetJob || {},
+      cvMetadata: profile.cvMetadata || undefined,
+      completedAt: new Date(),
+    };
+  }
+
+  private async extractStructuredDataFromConversation(
+    userId: string,
+    messages: ChatMessage[],
+  ): Promise<void> {
+    try {
+      // Use OpenAI to extract structured data from conversation
+      const conversationText = messages
+        .filter((msg) => msg.role === MessageRole.User)
+        .map((msg) => msg.content)
+        .join('\n');
+
+      const schema = {
+        name: 'full name',
+        email: 'email address',
+        phone: 'phone number',
+        country: 'country',
+        state: 'state or province',
+        city: 'city',
+        linkedIn: 'LinkedIn profile URL',
+        targetJobTitle: 'target job title or position',
+        careerGoal: 'career goal (promotion, career switch, new field, etc.)',
+        salaryExpectation: 'salary range expectation',
+      };
+
+      const systemPrompt = `Extract structured information from the user's responses. Return a JSON object with the fields: name, email, phone, country, state, city, linkedIn, targetJobTitle, careerGoal, salaryExpectation. Only include fields that are clearly mentioned.`;
+
+      const extracted = await this.openAIService.extractStructuredData(
+        conversationText,
+        schema,
+        systemPrompt,
+      );
+
+      if (extracted) {
+        // Update basic info
+        if (extracted.name || extracted.email || extracted.phone || extracted.country || extracted.state || extracted.city || extracted.linkedIn) {
+          await this.professionalProfileService.updateBasicInfo(userId, {
+            name: extracted.name,
+            email: extracted.email,
+            phone: extracted.phone,
+            country: extracted.country,
+            state: extracted.state,
+            city: extracted.city,
+            linkedIn: extracted.linkedIn,
+          });
+        }
+
+        // Update target job
+        if (extracted.targetJobTitle || extracted.careerGoal || extracted.salaryExpectation) {
+          await this.professionalProfileService.updateTargetJob(userId, {
+            targetJobTitle: extracted.targetJobTitle,
+            careerGoal: extracted.careerGoal,
+            salaryExpectation: extracted.salaryExpectation,
+          });
+        }
+      }
+
+      // Also use the existing extractor for other data
+      await this.profileExtractor.extractAndUpdateProfile(userId, messages);
+    } catch (error) {
+      this.logger.error('Error extracting structured data', error);
+      // Don't throw - extraction is best effort
+    }
   }
 
   async getProfileSummary(

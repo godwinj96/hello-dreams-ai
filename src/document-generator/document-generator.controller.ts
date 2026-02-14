@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -27,6 +29,9 @@ import {
   DocumentResponseDto,
 } from './dto/document-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UpdateDocumentDto, PatchDocumentDto } from './dto/update-document.dto';
+import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
+import { ThrottleAIGeneration, ThrottleChat } from '../common/decorators/throttle-ai.decorator';
 
 @ApiTags('document-generator')
 @ApiBearerAuth('JWT-auth')
@@ -73,7 +78,7 @@ export class DocumentGeneratorController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findOneConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
   ): Promise<DocumentConversationResponseDto> {
     return this.documentGeneratorService.findOneConversation(id, req.user.id);
@@ -87,13 +92,14 @@ export class DocumentGeneratorController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async deleteConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
   ): Promise<void> {
     return this.documentGeneratorService.deleteConversation(id, req.user.id);
   }
 
   @Post('conversations/:id/messages')
+  @ThrottleChat()
   @ApiOperation({
     summary: 'Send a message in a document conversation',
     description:
@@ -105,7 +111,7 @@ export class DocumentGeneratorController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: SendDocumentMessageDto })
   async sendMessage(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
     @Body() sendDto: SendDocumentMessageDto,
   ): Promise<DocumentMessageResponseDto> {
@@ -123,23 +129,77 @@ export class DocumentGeneratorController {
   @ApiResponse({ status: 404, description: 'Document not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getDocument(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
   ): Promise<DocumentResponseDto> {
     return this.documentGeneratorService.getDocument(conversationId, req.user.id);
   }
 
   @Post('conversations/:id/generate')
-  @ApiOperation({ summary: 'Generate or regenerate a document from conversation' })
+  @ThrottleAIGeneration()
+  @ApiOperation({
+    summary: 'Generate or regenerate a document from conversation',
+    description:
+      'Generates (or regenerates) the document for this conversation using the latest messages. The resulting document is persisted and can be retrieved or edited via the document endpoints: GET/PUT/PATCH/DELETE `/document-generator/conversations/:id/document`.',
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({ status: 201, description: 'Document generated successfully', type: DocumentResponseDto })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async generateDocument(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
   ): Promise<DocumentResponseDto> {
     return this.documentGeneratorService.generateDocument(
+      conversationId,
+      req.user.id,
+    );
+  }
+
+  @Put('conversations/:id/document')
+  @ApiOperation({ summary: 'Replace document JSON for a conversation' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 200, description: 'Document updated', type: DocumentResponseDto })
+  @ApiBody({ type: UpdateDocumentDto })
+  async updateDocument(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+    @Body() updateDto: UpdateDocumentDto,
+  ): Promise<DocumentResponseDto> {
+    return this.documentGeneratorService.updateDocument(
+      conversationId,
+      req.user.id,
+      updateDto,
+    );
+  }
+
+  @Patch('conversations/:id/document')
+  @ApiOperation({ summary: 'Partially update document JSON for a conversation' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 200, description: 'Document patched', type: DocumentResponseDto })
+  @ApiBody({ type: PatchDocumentDto })
+  async patchDocument(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+    @Body() patchDto: PatchDocumentDto,
+  ): Promise<DocumentResponseDto> {
+    return this.documentGeneratorService.patchDocument(
+      conversationId,
+      req.user.id,
+      patchDto,
+    );
+  }
+
+  @Delete('conversations/:id/document')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete document JSON for a conversation' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 204, description: 'Document deleted' })
+  async deleteDocument(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+  ): Promise<void> {
+    return this.documentGeneratorService.deleteDocument(
       conversationId,
       req.user.id,
     );

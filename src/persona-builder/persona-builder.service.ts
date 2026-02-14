@@ -1,15 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PersonaAnswer } from './entities/persona-answer.entity';
 import { SubmitAnswersDto, AnswerDto } from './dto/submit-answers.dto';
 import { PersonaResponseDto, QuestionDto } from './dto/persona-response.dto';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
-import {
-  AiChatService,
-  ChatMessage,
-} from '../resume-builder/services/ai-chat.service';
-import { MessageRole } from '../resume-builder/enums/message-role.enum';
+import { PersonaScoringService } from './services/persona-scoring.service';
+import { PersonaContentService } from './services/persona-content.service';
+import { PersonaArchetype } from './enums/persona-archetype.enum';
+import { PERSONA_QUESTIONS } from './constants/persona-questions';
+import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { DashboardEventService } from '../admin/services/dashboard-event.service';
+import { ContextIndexerService } from '../shared/services/context-indexer.service';
 
 @Injectable()
 export class PersonaBuilderService {
@@ -19,13 +21,20 @@ export class PersonaBuilderService {
     @InjectRepository(PersonaAnswer)
     private answerRepository: Repository<PersonaAnswer>,
     private professionalProfileService: ProfessionalProfileService,
-    private aiChatService: AiChatService,
+    private personaScoringService: PersonaScoringService,
+    private personaContentService: PersonaContentService,
+    private usageTrackingService: UsageTrackingService,
+    private dashboardEventService: DashboardEventService,
+    private contextIndexerService: ContextIndexerService,
   ) {}
 
   async getQuestions(): Promise<QuestionDto[]> {
-    // Questions are managed on the frontend and sent with answers
-    // This endpoint can return empty array or be removed if not needed
-    return [];
+    // Return the structured questions from constants
+    return PERSONA_QUESTIONS.map((q) => ({
+      id: q.id,
+      question: q.question,
+      category: 'persona',
+    }));
   }
 
   async submitAnswers(
@@ -45,7 +54,16 @@ export class PersonaBuilderService {
       } as Partial<PersonaAnswer>),
     );
 
-    return await this.answerRepository.save(answers);
+    const savedAnswers = await this.answerRepository.save(answers);
+
+    // Track answers submission
+    this.usageTrackingService
+      .trackAction(userId, 'answers_submitted', 'persona-builder', {
+        answerCount: savedAnswers.length,
+      })
+      .catch((err) => console.error('Failed to track answers submission:', err));
+
+    return savedAnswers;
   }
 
   async getUserAnswers(userId: string): Promise<PersonaAnswer[]> {
@@ -60,143 +78,207 @@ export class PersonaBuilderService {
     const answers = await this.getUserAnswers(userId);
 
     if (answers.length === 0) {
-      throw new Error('No answers found. Please submit answers first.');
+      throw new NotFoundException('No answers found. Please submit answers first.');
     }
 
-    // Format answers for AI
-    const answersText = answers
-      .map((a) => `Q: ${a.question}\nA: ${a.answer}`)
-      .join('\n\n');
+    // Build answer map (questionId -> optionId)
+    // We need to match answers to options
+    const answerMap = new Map<string, string>();
+    answers.forEach((answer) => {
+      const question = PERSONA_QUESTIONS.find((q) => q.id === answer.questionId);
+      if (question) {
+        // Try to find option by matching answer text
+        const option = question.options.find(
+          (opt) => opt.text === answer.answer,
+        );
+        if (option) {
+          answerMap.set(answer.questionId, option.id);
+        } else {
+          // If exact match fails, use first option as fallback (shouldn't happen)
+          this.logger.warn(
+            `Could not find option for question ${answer.questionId} with answer "${answer.answer}"`,
+          );
+        }
+      }
+    });
 
-    // Create prompt for persona generation
-    const systemPrompt = this.getPersonaGenerationPrompt();
-    const userPrompt = `Based on the following answers, analyze and generate a professional persona that describes the user's communication style, tone, professional voice, and writing preferences:\n\n${answersText}`;
+    // Get user's target job and career goal from profile
+    const profile = await this.professionalProfileService.getProfile(userId);
+    const targetJobTitle = profile.targetJob?.targetJobTitle;
+    const careerGoal = profile.targetJob?.careerGoal;
 
-    const messages: ChatMessage[] = [
-      { role: MessageRole.System, content: systemPrompt },
-      { role: MessageRole.User, content: userPrompt },
-    ];
-
-    // Get AI response
-    let aiResponse: string;
-    try {
-      aiResponse = await this.aiChatService.chat(messages);
-    } catch (error) {
-      this.logger.error('Error generating persona', error);
-      throw new Error('Failed to generate persona. Please try again.');
-    }
-
-    // Parse AI response to extract persona
-    const persona = this.parsePersonaFromResponse(aiResponse);
-
-    // Update professional profile with persona
-    await this.professionalProfileService.updatePersona(userId, persona);
-
-    // Mark persona section as complete
-    await this.professionalProfileService.markSectionComplete(
-      userId,
-      'persona',
+    // Calculate persona scores
+    const scoringResult = this.personaScoringService.calculatePersona(
+      answerMap,
+      targetJobTitle,
+      careerGoal,
     );
 
-    const profile = await this.professionalProfileService.getProfile(userId);
+    // Get persona descriptions
+    const currentPersonaDescription =
+      this.personaContentService.getPersonaDescription(
+        scoringResult.currentPersona,
+      );
+    const idealPersonaDescription =
+      this.personaContentService.getPersonaDescription(scoringResult.idealPersona);
+
+    // Generate transformation playbook
+    const transformationPlaybook =
+      this.personaContentService.generateTransformationPlaybook(
+        scoringResult.currentPersona,
+        scoringResult.idealPersona,
+      );
+
+    // Build persona data
+    const personaData = {
+      currentPersona: scoringResult.currentPersona,
+      idealPersona: scoringResult.idealPersona,
+      transformationPath: {
+        fromPersona: scoringResult.currentPersona,
+        toPersona: scoringResult.idealPersona,
+        playbook: transformationPlaybook,
+      },
+      appliedPersona: false,
+    };
+
+    // Update professional profile
+    await this.professionalProfileService.updatePersonaData(userId, personaData);
+
+    // Mark persona section as complete
+    await this.professionalProfileService.markSectionComplete(userId, 'persona');
+
+    const updatedProfile = await this.professionalProfileService.getProfile(userId);
+
+    // Map personaData with proper types (entity stores as string, DTO expects enum)
+    const mappedPersonaData = updatedProfile.personaData ? {
+      ...updatedProfile.personaData,
+      currentPersona: updatedProfile.personaData.currentPersona as PersonaArchetype | undefined,
+      idealPersona: updatedProfile.personaData.idealPersona as PersonaArchetype | undefined,
+      transformationPath: updatedProfile.personaData.transformationPath ? {
+        ...updatedProfile.personaData.transformationPath,
+        fromPersona: updatedProfile.personaData.transformationPath.fromPersona as PersonaArchetype | undefined,
+        toPersona: updatedProfile.personaData.transformationPath.toPersona as PersonaArchetype | undefined,
+      } : undefined,
+    } : personaData;
+
+    // Index persona/profile embedding
+    await this.contextIndexerService.indexPersona(userId, {
+      persona: updatedProfile.persona,
+      personaData: mappedPersonaData,
+      careerGoals: updatedProfile.careerGoals,
+    });
+
+    // Track persona generation
+    this.usageTrackingService
+      .trackAction(userId, 'persona_generated', 'persona-builder', {
+        currentPersona: scoringResult.currentPersona,
+        idealPersona: scoringResult.idealPersona,
+      })
+      .catch((err) => console.error('Failed to track persona generation:', err));
+    this.dashboardEventService.emitFeatureUsed(userId, 'persona-builder', 'persona_generated');
 
     return {
-      id: profile.id,
-      userId: profile.userId,
-      persona: profile.persona || {},
-      createdAt: profile.createdAt,
-      updatedAt: profile.updatedAt,
+      id: updatedProfile.id,
+      userId: updatedProfile.userId,
+      persona: updatedProfile.persona || {},
+      personaData: mappedPersonaData,
+      currentPersonaDescription,
+      createdAt: updatedProfile.createdAt,
+      updatedAt: updatedProfile.updatedAt,
     };
+  }
+
+  async applyPersonaToProfile(userId: string): Promise<PersonaResponseDto> {
+    const profile = await this.professionalProfileService.getProfile(userId);
+
+    if (!profile.personaData || !profile.personaData.currentPersona) {
+      throw new NotFoundException(
+        'Persona not found. Please generate persona first.',
+      );
+    }
+
+    // Mark persona as applied
+    await this.professionalProfileService.updatePersonaData(userId, {
+      ...profile.personaData,
+      appliedPersona: true,
+    });
+
+    const updatedProfile = await this.professionalProfileService.getProfile(userId);
+
+    const currentPersonaDescription =
+      this.personaContentService.getPersonaDescription(
+        updatedProfile.personaData!.currentPersona! as PersonaArchetype,
+      );
+
+    // Map personaData with proper types
+    const mappedPersonaData = updatedProfile.personaData ? {
+      ...updatedProfile.personaData,
+      currentPersona: updatedProfile.personaData.currentPersona as PersonaArchetype | undefined,
+      idealPersona: updatedProfile.personaData.idealPersona as PersonaArchetype | undefined,
+      transformationPath: updatedProfile.personaData.transformationPath ? {
+        ...updatedProfile.personaData.transformationPath,
+        fromPersona: updatedProfile.personaData.transformationPath.fromPersona as PersonaArchetype | undefined,
+        toPersona: updatedProfile.personaData.transformationPath.toPersona as PersonaArchetype | undefined,
+      } : undefined,
+    } : undefined;
+
+    return {
+      id: updatedProfile.id,
+      userId: updatedProfile.userId,
+      persona: updatedProfile.persona || {},
+      personaData: mappedPersonaData,
+      currentPersonaDescription,
+      createdAt: updatedProfile.createdAt,
+      updatedAt: updatedProfile.updatedAt,
+    };
+  }
+
+  async restartQuestionnaire(userId: string): Promise<void> {
+    // Delete all answers
+    await this.answerRepository.delete({ userId });
+
+    // Clear persona data (but keep basic profile)
+    const profile = await this.professionalProfileService.getProfile(userId);
+    await this.professionalProfileService.updatePersonaData(userId, {
+      currentPersona: undefined,
+      idealPersona: undefined,
+      transformationPath: undefined,
+      appliedPersona: false,
+    });
   }
 
   async getPersona(userId: string): Promise<PersonaResponseDto | null> {
     const profile = await this.professionalProfileService.getProfile(userId);
 
-    if (!profile.persona || Object.keys(profile.persona).length === 0) {
+    if (!profile.personaData || !profile.personaData.currentPersona) {
       return null;
     }
+
+    const currentPersonaDescription =
+      this.personaContentService.getPersonaDescription(
+        profile.personaData.currentPersona as PersonaArchetype,
+      );
+
+    // Map personaData with proper types
+    const mappedPersonaData = profile.personaData ? {
+      ...profile.personaData,
+      currentPersona: profile.personaData.currentPersona as PersonaArchetype | undefined,
+      idealPersona: profile.personaData.idealPersona as PersonaArchetype | undefined,
+      transformationPath: profile.personaData.transformationPath ? {
+        ...profile.personaData.transformationPath,
+        fromPersona: profile.personaData.transformationPath.fromPersona as PersonaArchetype | undefined,
+        toPersona: profile.personaData.transformationPath.toPersona as PersonaArchetype | undefined,
+      } : undefined,
+    } : undefined;
 
     return {
       id: profile.id,
       userId: profile.userId,
-      persona: profile.persona,
+      persona: profile.persona || {},
+      personaData: mappedPersonaData,
+      currentPersonaDescription,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };
-  }
-
-  private getPersonaGenerationPrompt(): string {
-    return `You are a professional persona analyst. Your task is to analyze user answers to questions about their communication style and professional preferences, then generate a structured persona description.
-
-Based on the user's answers, extract and describe:
-1. Communication Style: How they communicate (e.g., direct, diplomatic, collaborative, assertive)
-2. Tone: The tone they prefer (e.g., professional, friendly, confident, approachable, formal)
-3. Professional Voice: How they want to be perceived (e.g., expert, leader, innovator, team player)
-4. Writing Style: Their preferred writing style (e.g., concise, detailed, storytelling, data-driven)
-5. Personality Traits: Key traits to highlight (e.g., analytical, creative, strategic, empathetic)
-6. Preferences: Any specific preferences mentioned
-
-Format your response as a JSON object with these keys, or provide a clear structured description that can be parsed into these categories. Be specific and actionable.`;
-  }
-
-  private parsePersonaFromResponse(aiResponse: string): any {
-    // Try to extract JSON from response
-    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[0]);
-      } catch (e) {
-        // If JSON parsing fails, continue with text parsing
-      }
-    }
-
-    // Fallback: parse text response
-    const persona: any = {};
-
-    // Extract communication style
-    const commStyleMatch = aiResponse.match(
-      /communication style[:\-]?\s*([^.\n]+)/i,
-    );
-    if (commStyleMatch) {
-      persona.communicationStyle = commStyleMatch[1].trim();
-    }
-
-    // Extract tone
-    const toneMatch = aiResponse.match(/tone[:\-]?\s*([^.\n]+)/i);
-    if (toneMatch) {
-      persona.tone = toneMatch[1].trim();
-    }
-
-    // Extract professional voice
-    const voiceMatch = aiResponse.match(
-      /professional voice[:\-]?\s*([^.\n]+)/i,
-    );
-    if (voiceMatch) {
-      persona.professionalVoice = voiceMatch[1].trim();
-    }
-
-    // Extract writing style
-    const writingMatch = aiResponse.match(/writing style[:\-]?\s*([^.\n]+)/i);
-    if (writingMatch) {
-      persona.writingStyle = writingMatch[1].trim();
-    }
-
-    // Extract personality traits
-    const traitsMatch = aiResponse.match(
-      /personality traits?[:\-]?\s*([^.\n]+)/i,
-    );
-    if (traitsMatch) {
-      persona.personalityTraits = traitsMatch[1]
-        .split(/[,;]/)
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
-    }
-
-    // Store full response as preferences if structured parsing didn't work well
-    if (Object.keys(persona).length === 0) {
-      persona.preferences = { fullDescription: aiResponse };
-    }
-
-    return persona;
   }
 }

@@ -8,12 +8,17 @@ export class AnswerDto {
   @IsNotEmpty()
   questionId: string;
 
+  @ApiProperty({ description: 'Selected option ID', example: '1a' })
+  @IsString()
+  @IsNotEmpty()
+  optionId: string;
+
   @ApiProperty({ description: 'Question text', example: 'How would you describe your communication style?' })
   @IsString()
   @IsNotEmpty()
   question: string;
 
-  @ApiProperty({ description: 'Answer to the question', example: 'I prefer direct and clear communication' })
+  @ApiProperty({ description: 'Answer text (option text)', example: 'Wait to be asked' })
   @IsString()
   @IsNotEmpty()
   answer: string;

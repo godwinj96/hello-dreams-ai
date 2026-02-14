@@ -1,6 +1,64 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { AiChatService, ChatMessage } from './ai-chat.service';
 import { MessageRole } from '../enums/message-role.enum';
+import { buildJsonOnlyInstruction, parseJsonObject } from '../../shared/utils/json-llm.util';
+
+export interface ResumeJson {
+  contact: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    links?: {
+      linkedIn?: string;
+      github?: string;
+      portfolio?: string;
+      other?: string[];
+    };
+  };
+  summary?: string;
+  workExperience?: Array<{
+    jobTitle: string;
+    company: string;
+    location?: string;
+    startDate?: string;
+    endDate?: string;
+    achievements?: string[];
+    responsibilities?: string[];
+    tools?: string[];
+    highlights?: string[];
+  }>;
+  education?: Array<{
+    degree: string;
+    institution: string;
+    graduationYear?: number;
+    honors?: string;
+  }>;
+  skills?: {
+    core?: string[];
+    technical?: string[];
+    soft?: string[];
+    tools?: string[];
+    languages?: string[];
+  };
+  projects?: Array<{
+    name: string;
+    description?: string;
+    impact?: string;
+    technologies?: string[];
+    links?: string[];
+  }>;
+  certifications?: Array<{
+    name: string;
+    issuingOrganization?: string;
+    date?: string;
+  }>;
+  achievements?: Array<{
+    title: string;
+    description?: string;
+    date?: string;
+  }>;
+}
 
 @Injectable()
 export class ResumeGeneratorService {
@@ -12,87 +70,89 @@ export class ResumeGeneratorService {
    * Generate a resume based on conversation messages
    * This will ask the AI to generate the final resume using all collected information
    */
-  async generateResume(messages: ChatMessage[]): Promise<string> {
+  async generateResume(messages: ChatMessage[]): Promise<ResumeJson> {
     try {
-      // Create a prompt to generate the resume
-      const generatePrompt = `Based on all the information I've provided, please generate my complete ATS-friendly resume now. Use the exact format specified in your instructions.`;
+      const resumeSchemaDescription = `
+Top-level JSON object with these keys:
+- contact: object { fullName, email, phone, location, links{linkedIn, github, portfolio, other[]} }
+- summary: string (2-4 sentences)
+- workExperience: array of objects { jobTitle, company, location, startDate, endDate, achievements[], responsibilities[], tools[], highlights[] }
+- education: array of objects { degree, institution, graduationYear, honors }
+- skills: object { core[], technical[], soft[], tools[], languages[] }
+- projects: array of objects { name, description, impact, technologies[], links[] }
+- certifications: array of objects { name, issuingOrganization, date }
+- achievements: array of objects { title, description, date }
+All sections are objects; subsections are nested objects/arrays.`;
 
-      // Add the generation request to messages
+      const example: ResumeJson = {
+        contact: {
+          fullName: 'Jane Doe',
+          email: 'jane@example.com',
+          phone: '+1 555-123-4567',
+          location: 'Austin, TX, USA',
+          links: {
+            linkedIn: 'https://linkedin.com/in/janedoe',
+            github: 'https://github.com/janedoe',
+            portfolio: 'https://janedoe.com',
+          },
+        },
+        summary: 'Product manager with 8+ years delivering B2B SaaS outcomes...',
+        workExperience: [
+          {
+            jobTitle: 'Senior Product Manager',
+            company: 'Acme Corp',
+            startDate: '2021-03',
+            endDate: 'Present',
+            achievements: [
+              'Led launch of X improving activation by 18%.',
+              'Partnered with sales to grow ARR by $1.2M.',
+            ],
+            tools: ['Jira', 'Figma', 'SQL'],
+          },
+        ],
+        education: [
+          { degree: 'B.Sc. Computer Science', institution: 'UT Austin', graduationYear: 2016 },
+        ],
+        skills: {
+          core: ['Product Strategy', 'A/B Testing'],
+          technical: ['SQL', 'APIs'],
+          tools: ['Jira', 'Figma'],
+          languages: ['English', 'Spanish'],
+        },
+        projects: [
+          {
+            name: 'Experimentation Platform',
+            description: 'Built internal A/B platform for 20 squads',
+            technologies: ['Node.js', 'Postgres', 'React'],
+          },
+        ],
+        certifications: [{ name: 'CSPO', issuingOrganization: 'Scrum Alliance', date: '2022' }],
+        achievements: [{ title: 'President Club', description: 'Top 5% PM impact', date: '2023' }],
+      };
+
+      const systemPrompt = buildJsonOnlyInstruction(resumeSchemaDescription, example);
+
       const messagesWithPrompt: ChatMessage[] = [
+        { role: MessageRole.System, content: systemPrompt },
         ...messages,
         {
           role: MessageRole.User,
-          content: generatePrompt,
+          content:
+            'Generate the resume JSON now using the agreed schema. Respond with JSON only.',
         },
       ];
 
-      // Get the AI response (the generated resume)
       const resumeContent = await this.aiChatService.chat(messagesWithPrompt);
+      const parsed = parseJsonObject<ResumeJson>(resumeContent);
 
-      // Extract the resume from the response (AI might add some text before/after)
-      const cleanedResume = this.extractResumeContent(resumeContent);
+      if (!parsed.ok || !parsed.data) {
+        throw new BadRequestException(parsed.error || 'Model did not return valid JSON.');
+      }
 
-      return cleanedResume;
+      return parsed.data;
     } catch (error) {
       this.logger.error('Error generating resume', error);
       throw new Error('Failed to generate resume. Please try again.');
     }
   }
-
-  /**
-   * Extract the resume content from AI response
-   * The AI might add some conversational text, so we extract just the resume
-   */
-  private extractResumeContent(aiResponse: string): string {
-    // Look for common resume section headers to identify where the resume starts
-    const resumeMarkers = [
-      'FULL NAME',
-      'PROFESSIONAL SUMMARY',
-      'WORK EXPERIENCE',
-      'EDUCATION',
-      'SKILLS',
-    ];
-
-    let resumeStartIndex = -1;
-    for (const marker of resumeMarkers) {
-      const index = aiResponse.indexOf(marker);
-      if (index !== -1 && (resumeStartIndex === -1 || index < resumeStartIndex)) {
-        resumeStartIndex = index;
-      }
-    }
-
-    if (resumeStartIndex !== -1) {
-      // Extract from the first marker found
-      return aiResponse.substring(resumeStartIndex).trim();
-    }
-
-    // If no markers found, return the full response
-    // The AI should have generated a proper resume
-    return aiResponse.trim();
-  }
-
-  /**
-   * Validate that the resume content follows ATS-friendly format
-   */
-  validateResumeFormat(resumeContent: string): boolean {
-    // Check for forbidden characters/elements
-    const forbiddenPatterns = [
-      /[📊📈📉🎯✅❌]/g, // Emojis
-      /<table|<div|<span|<img/i, // HTML tags
-      /│|┌|┐|└|┘|├|┤|┬|┴/g, // Box drawing characters
-    ];
-
-    for (const pattern of forbiddenPatterns) {
-      if (pattern.test(resumeContent)) {
-        return false;
-      }
-    }
-
-    // Check that it has at least some expected sections
-    const hasName = /^[A-Z\s]+$/m.test(resumeContent.split('\n')[0]?.trim() || '');
-    const hasSections = /(WORK EXPERIENCE|EDUCATION|SKILLS|PROFESSIONAL SUMMARY)/i.test(resumeContent);
-
-    return hasName || hasSections;
-  }
 }
-

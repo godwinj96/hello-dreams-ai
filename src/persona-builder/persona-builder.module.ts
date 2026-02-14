@@ -3,18 +3,23 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PersonaBuilderController } from './persona-builder.controller';
 import { PersonaBuilderService } from './persona-builder.service';
 import { PersonaAnswer } from './entities/persona-answer.entity';
-import { AiChatService } from '../resume-builder/services/ai-chat.service';
-import { ResumeBuilderModule } from '../resume-builder/resume-builder.module';
+import { PersonaScoringService } from './services/persona-scoring.service';
+import { PersonaContentService } from './services/persona-content.service';
 import { ProfessionalProfileModule } from '../professional-profile/professional-profile.module';
+import { AdminModule } from '../admin/admin.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([PersonaAnswer]),
-    ResumeBuilderModule,
     ProfessionalProfileModule,
+    AdminModule,
   ],
   controllers: [PersonaBuilderController],
-  providers: [PersonaBuilderService],
+  providers: [
+    PersonaBuilderService,
+    PersonaScoringService,
+    PersonaContentService,
+  ],
   exports: [PersonaBuilderService],
 })
 export class PersonaBuilderModule {}

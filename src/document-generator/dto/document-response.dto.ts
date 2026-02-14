@@ -59,8 +59,33 @@ export class DocumentResponseDto {
   @ApiProperty({ description: 'Document type', enum: DocumentType, example: DocumentType.CoverLetter })
   documentType: DocumentType;
 
-  @ApiProperty({ description: 'Document content', example: 'Dear Hiring Manager,\n...' })
-  content: string;
+  @ApiProperty({
+    description: 'Document content as structured JSON',
+    type: 'object',
+    additionalProperties: true,
+    example: {
+      documentType: 'coverLetter',
+      meta: {
+        targetRole: 'Software Engineer',
+        targetCompany: 'Tech Corp',
+      },
+      sections: [
+        {
+          heading: 'Opening',
+          paragraphs: ['Dear Hiring Manager, ...'],
+        },
+        {
+          heading: 'Body',
+          paragraphs: ['I led...', 'I improved...'],
+        },
+        {
+          heading: 'Closing',
+          paragraphs: ['Thank you...', 'Sincerely, Jane'],
+        },
+      ],
+    },
+  })
+  content: Record<string, any>;
 
   @ApiProperty({ description: 'Document version', example: 1 })
   version: number;

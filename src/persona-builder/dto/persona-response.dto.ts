@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { PersonaArchetype } from '../enums/persona-archetype.enum';
 
 export class PersonaResponseDto {
   @ApiProperty({ description: 'Profile ID', example: 'uuid' })
@@ -26,6 +27,34 @@ export class PersonaResponseDto {
     preferences?: Record<string, any>;
   };
 
+  @ApiProperty({
+    description: 'Persona data with current and ideal personas',
+    required: false,
+  })
+  personaData?: {
+    currentPersona?: PersonaArchetype;
+    idealPersona?: PersonaArchetype;
+    transformationPath?: {
+      fromPersona?: PersonaArchetype;
+      toPersona?: PersonaArchetype;
+      playbook?: {
+        speakingStyle?: string[];
+        dressingForImpact?: string[];
+        workplaceBehaviour?: string[];
+        meetingMastery?: string[];
+        digitalPresence?: string[];
+      };
+    };
+    appliedPersona?: boolean;
+  };
+
+  @ApiProperty({ description: 'Current persona description', required: false })
+  currentPersonaDescription?: {
+    howPeopleSeeYou: string;
+    strengths: string[];
+    growthOpportunities: string[];
+  };
+
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt: Date;
 
@@ -44,3 +73,41 @@ export class QuestionDto {
   category?: string;
 }
 
+export class CurrentPersonaDto {
+  @ApiProperty({ description: 'Current persona archetype', enum: PersonaArchetype })
+  archetype: PersonaArchetype;
+
+  @ApiProperty({ description: 'How people see you' })
+  howPeopleSeeYou: string;
+
+  @ApiProperty({ description: 'Strengths', type: [String] })
+  strengths: string[];
+
+  @ApiProperty({ description: 'Growth opportunities', type: [String] })
+  growthOpportunities: string[];
+}
+
+export class IdealPersonaDto {
+  @ApiProperty({ description: 'Ideal persona archetype', enum: PersonaArchetype })
+  archetype: PersonaArchetype;
+
+  @ApiProperty({ description: 'Reason for ideal persona' })
+  reason: string;
+}
+
+export class TransformationPlaybookDto {
+  @ApiProperty({ description: 'Speaking style tips', type: [String] })
+  speakingStyle: string[];
+
+  @ApiProperty({ description: 'Dressing for impact tips', type: [String] })
+  dressingForImpact: string[];
+
+  @ApiProperty({ description: 'Workplace behaviour tips', type: [String] })
+  workplaceBehaviour: string[];
+
+  @ApiProperty({ description: 'Meeting mastery tips', type: [String] })
+  meetingMastery: string[];
+
+  @ApiProperty({ description: 'Digital presence tips', type: [String] })
+  digitalPresence: string[];
+}

@@ -25,7 +25,7 @@ export class AppController {
 
   @Get('user-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.User, Role.Admin)
+  @Roles(Role.User, Role.Admin, Role.Superuser)
   getUserOnlyRoute(@Request() req) {
     return {
       message: 'This route is accessible to authenticated users',
@@ -35,7 +35,7 @@ export class AppController {
 
   @Get('admin-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.Admin)
+  @Roles(Role.Admin, Role.Superuser)
   getAdminOnlyRoute(@Request() req) {
     return {
       message: 'This route is accessible only to admins',

@@ -36,8 +36,8 @@ export class Resume {
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   user: User;
 
-  @Column({ type: 'text' })
-  content: string;
+  @Column({ type: 'jsonb' })
+  content: Record<string, any>;
 
   @Column({ type: 'int', default: 1 })
   version: number;

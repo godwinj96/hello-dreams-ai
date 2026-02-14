@@ -3,10 +3,29 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true, // Enable raw body for webhook signature verification
+    bodyParser: true,
+  });
   const configService = app.get(ConfigService);
+
+  // Apply security headers middleware globally
+  app.use(new SecurityHeadersMiddleware().use.bind(new SecurityHeadersMiddleware()));
+
+  // Configure request size limits
+  app.use((req, res, next) => {
+    // JSON body size limit: 1MB
+    if (req.headers['content-type']?.includes('application/json')) {
+      const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+      if (contentLength > 1024 * 1024) {
+        return res.status(413).json({ message: 'Request entity too large' });
+      }
+    }
+    next();
+  });
 
   // CORS configuration
   const corsOrigins = configService.get<string>('CORS_ORIGIN');
@@ -48,26 +67,38 @@ async function bootstrap() {
       `API documentation for Hello Dreams AI - Career preparation platform
 
 ## Getting Started
+- Auth: \`POST /auth/register\` or \`POST /auth/login\` → use \`Authorization: Bearer <access_token>\` on all protected endpoints.
+- Conversations: For AI modules, create a conversation first, then send messages to it.
+  - Resume: \`POST /resume-builder/conversations\` → \`POST /resume-builder/conversations/:id/messages\`
+  - Career: \`POST /career-profile/conversations\` → \`POST /career-profile/conversations/:id/messages\`
+  - Documents: \`POST /document-generator/conversations\` → \`POST /document-generator/conversations/:id/messages\`
 
-**1. Authentication Flow:**
-- Register a new account using \`POST /auth/register\` or login with \`POST /auth/login\`
-- Both endpoints return an \`access_token\` and \`refresh_token\` in the response
-- **Important:** You must include the \`access_token\` in the Authorization header for all protected endpoints
-- Format: \`Authorization: Bearer <access_token>\`
+## Headshot Generator (/headshot-generator/generate)
+1) Upload your photo: \`POST /headshot-generator/upload\` (multipart form, field \`image\`) → returns \`originalImageUrl\`.
+2) Generate: \`POST /headshot-generator/generate\` with body \`{ originalImageUrl, style, personaType? }\`. Uses HuggingFace SDXL when configured, otherwise OpenAI Images. Generated headshots are stored and persisted.
+3) Retrieve: \`GET /headshot-generator/generations/:id\` or list via \`GET /headshot-generator/generations\`.
 
-**2. Conversation Flow:**
-- Before sending messages to any AI module (resume-builder, career-profile, document-generator), you must first create a conversation
-- Create a conversation by sending a \`POST\` request to the module's \`/conversations\` endpoint:
-  - Resume Builder: \`POST /resume-builder/conversations\`
-  - Career Profile: \`POST /career-profile/conversations\`
-  - Document Generator: \`POST /document-generator/conversations\`
-- Once you have a conversation ID, you can send messages to \`POST /<module>/conversations/:id/messages\`
+## Document Generator (?generate & persistence)
+Goal: generate and persist cover letters/personal statements.
+1) Start a conversation: \`POST /document-generator/conversations\` (choose document type + context) → returns conversation ID.
+2) Iterate content: \`POST /document-generator/conversations/:id/messages\` with prompts/edits to shape the document.
+3) Generate or regenerate document: \`POST /document-generator/conversations/:id/generate\` — produces the current document content and persists it to storage linked to the conversation.
+4) Access/persist data:
+   - Read: \`GET /document-generator/conversations/:id/document\`
+   - Replace: \`PUT /document-generator/conversations/:id/document\`
+   - Patch: \`PATCH /document-generator/conversations/:id/document\`
+   - Delete: \`DELETE /document-generator/conversations/:id/document\`
+Documents remain available via these endpoints after generation.
 
-**3. Example Flow:**
-1. Register/Login → Get access token
-2. Set Authorization header: \`Authorization: Bearer <access_token>\`
-3. Create conversation → Get conversation ID
-4. Send messages to the conversation using the conversation ID`,
+## Module Quickstart
+- Resume Builder: create conversation → send resume content/messages.
+- Career Profile: create conversation → ask discovery/role-fit questions.
+- Persona Builder: build professional persona via answers.
+- Document Generator: see flow above for \`/generate\` and persistence.
+- LinkedIn Optimization: optimize profile content via messages.
+- Headshot Generator: upload photo → generate variations (HF SDXL preferred, OpenAI fallback).
+- Job Application: manage and match applications.
+- Auth/Users: register/login and manage user profiles.`,
     )
     .setVersion('1.0')
     .addBearerAuth(
@@ -90,6 +121,9 @@ async function bootstrap() {
       'document-generator',
       'Cover letter and personal statement generator',
     )
+    .addTag('linkedin-optimization', 'LinkedIn profile optimization module')
+    .addTag('headshot-generator', 'Professional headshot generation module')
+    .addTag('job-application', 'Job application and matching module')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

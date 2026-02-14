@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -34,6 +35,9 @@ import {
 } from './dto/resume-response.dto';
 import { PaginationQueryDto } from './dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UpdateResumeDto, PatchResumeDto } from './dto/update-resume.dto';
+import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
+import { ThrottleAIGeneration, ThrottleChat } from '../common/decorators/throttle-ai.decorator';
 
 @ApiTags('resume-builder')
 @ApiBearerAuth('JWT-auth')
@@ -94,7 +98,7 @@ export class ResumeBuilderController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findOneConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
     @Query() messagesPagination?: PaginationQueryDto,
   ): Promise<ConversationWithPaginatedMessagesDto> {
@@ -113,7 +117,7 @@ export class ResumeBuilderController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: UpdateResumeConversationDto })
   async updateConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
     @Body() updateDto: UpdateResumeConversationDto,
   ): Promise<ResumeConversationResponseDto> {
@@ -132,13 +136,14 @@ export class ResumeBuilderController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async deleteConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
   ): Promise<void> {
     return this.resumeBuilderService.deleteConversation(id, req.user.id);
   }
 
   @Post('conversations/:id/messages')
+  @ThrottleChat()
   @ApiOperation({
     summary: 'Send a message in a resume conversation',
     description:
@@ -150,7 +155,7 @@ export class ResumeBuilderController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: SendResumeMessageDto })
   async sendMessage(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
     @Body() sendDto: SendResumeMessageDto,
   ): Promise<ResumeMessageResponseDto> {
@@ -168,25 +173,72 @@ export class ResumeBuilderController {
   @ApiResponse({ status: 404, description: 'Resume not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getResume(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
   ): Promise<ResumeResponseDto> {
     return this.resumeBuilderService.getResume(conversationId, req.user.id);
   }
 
   @Post('conversations/:id/generate')
+  @ThrottleAIGeneration()
   @ApiOperation({ summary: 'Generate or regenerate a resume from conversation' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({ status: 201, description: 'Resume generated successfully', type: ResumeResponseDto })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async generateResume(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
   ): Promise<ResumeResponseDto> {
     return this.resumeBuilderService.generateResume(
       conversationId,
       req.user.id,
     );
+  }
+
+  @Put('conversations/:id/resume')
+  @ApiOperation({ summary: 'Replace resume JSON for a conversation' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 200, description: 'Resume updated', type: ResumeResponseDto })
+  @ApiBody({ type: UpdateResumeDto })
+  async updateResume(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+    @Body() updateDto: UpdateResumeDto,
+  ): Promise<ResumeResponseDto> {
+    return this.resumeBuilderService.updateResume(
+      conversationId,
+      req.user.id,
+      updateDto.content,
+    );
+  }
+
+  @Patch('conversations/:id/resume')
+  @ApiOperation({ summary: 'Partially update resume JSON for a conversation' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 200, description: 'Resume patched', type: ResumeResponseDto })
+  @ApiBody({ type: PatchResumeDto })
+  async patchResume(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+    @Body() patchDto: PatchResumeDto,
+  ): Promise<ResumeResponseDto> {
+    return this.resumeBuilderService.patchResume(
+      conversationId,
+      req.user.id,
+      patchDto.content,
+    );
+  }
+
+  @Delete('conversations/:id/resume')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete resume JSON for a conversation' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 204, description: 'Resume deleted' })
+  async deleteResume(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+  ): Promise<void> {
+    return this.resumeBuilderService.deleteResume(conversationId, req.user.id);
   }
 }

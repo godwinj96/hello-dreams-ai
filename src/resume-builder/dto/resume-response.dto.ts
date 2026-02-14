@@ -50,8 +50,35 @@ export class ResumeResponseDto {
   @ApiProperty({ description: 'Conversation ID', example: 'uuid' })
   conversationId: string;
 
-  @ApiProperty({ description: 'Resume content', example: 'FULL NAME\n...' })
-  content: string;
+  @ApiProperty({
+    description: 'Resume content as structured JSON',
+    type: 'object',
+    additionalProperties: true,
+    example: {
+      contact: {
+        fullName: 'Jane Doe',
+        email: 'jane@example.com',
+        phone: '+1 555-123-4567',
+        location: 'Austin, TX, USA',
+        links: { linkedIn: 'https://linkedin.com/in/janedoe' },
+      },
+      summary: 'Product manager with 8+ years...',
+      workExperience: [
+        {
+          jobTitle: 'Senior Product Manager',
+          company: 'Acme Corp',
+          startDate: '2021-03',
+          endDate: 'Present',
+          achievements: ['Scaled...', 'Improved...'],
+          tools: ['Jira', 'Figma'],
+        },
+      ],
+      education: [{ degree: 'B.Sc. Computer Science', institution: 'UT Austin', graduationYear: 2016 }],
+      skills: { core: ['Product Strategy', 'A/B Testing'], tools: ['Figma', 'SQL'] },
+      projects: [{ name: 'Launch X', description: '....', technologies: ['React', 'Node.js'] }],
+    },
+  })
+  content: Record<string, any>;
 
   @ApiProperty({ description: 'Resume version', example: 1 })
   version: number;

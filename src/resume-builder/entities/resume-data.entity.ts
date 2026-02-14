@@ -85,6 +85,12 @@ export class ResumeData {
     date?: string;
   }>;
 
+  @Column({ type: 'text', nullable: true })
+  summary: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  keyAchievements: string[];
+
   @CreateDateColumn()
   createdAt: Date;
 

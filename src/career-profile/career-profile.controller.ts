@@ -10,6 +10,9 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,7 +21,9 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiBody,
+  ApiConsumes,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CareerProfileService } from './career-profile.service';
 import { CreateCareerConversationDto } from './dto/create-conversation.dto';
 import { SendCareerMessageDto } from './dto/send-message.dto';
@@ -28,7 +33,11 @@ import {
   CareerMessageResponseDto,
   ProfileSummaryResponseDto,
 } from './dto/career-profile-response.dto';
+import { UploadCvResponseDto } from './dto/upload-cv.dto';
+import { VoiceMessageResponseDto } from './dto/voice-message.dto';
+import { CareerProfileConfirmationDto } from './dto/confirmation.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('career-profile')
 @ApiBearerAuth('JWT-auth')
@@ -70,7 +79,7 @@ export class CareerProfileController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findOneConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
   ): Promise<CareerConversationResponseDto> {
     return this.careerProfileService.findOneConversation(id, req.user.id);
@@ -84,7 +93,7 @@ export class CareerProfileController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: UpdateCareerConversationDto })
   async updateConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
     @Body() updateDto: UpdateCareerConversationDto,
   ): Promise<CareerConversationResponseDto> {
@@ -103,7 +112,7 @@ export class CareerProfileController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async deleteConversation(
-    @Param('id') id: string,
+    @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
   ): Promise<void> {
     return this.careerProfileService.deleteConversation(id, req.user.id);
@@ -121,7 +130,7 @@ export class CareerProfileController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: SendCareerMessageDto })
   async sendMessage(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
     @Body() sendDto: SendCareerMessageDto,
   ): Promise<CareerMessageResponseDto> {
@@ -139,10 +148,86 @@ export class CareerProfileController {
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfileSummary(
-    @Param('id') conversationId: string,
+    @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
   ): Promise<ProfileSummaryResponseDto> {
     return this.careerProfileService.getProfileSummary(conversationId, req.user.id);
+  }
+
+  @Post('conversations/:id/upload-cv')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload and parse CV/resume' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'CV file (PDF or DOCX)',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'CV uploaded and parsed successfully', type: UploadCvResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid file type' })
+  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async uploadCv(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<UploadCvResponseDto> {
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+    return this.careerProfileService.uploadCv(conversationId, req.user.id, file);
+  }
+
+  @Post('conversations/:id/voice-message')
+  @UseInterceptors(FileInterceptor('audio'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Send a voice message (audio will be transcribed)' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        audio: {
+          type: 'string',
+          format: 'binary',
+          description: 'Audio file (MP3, WAV, etc.)',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Voice message transcribed and processed', type: VoiceMessageResponseDto })
+  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async sendVoiceMessage(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+    @UploadedFile() audioFile: Express.Multer.File,
+  ): Promise<VoiceMessageResponseDto> {
+    if (!audioFile) {
+      throw new BadRequestException('No audio file provided');
+    }
+    return this.careerProfileService.sendVoiceMessage(conversationId, req.user.id, audioFile);
+  }
+
+  @Get('conversations/:id/confirmation')
+  @ApiOperation({ summary: 'Get confirmation summary of collected data' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 200, description: 'Confirmation data', type: CareerProfileConfirmationDto })
+  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getConfirmation(
+    @Param('id', UUIDValidationPipe) conversationId: string,
+    @Request() req,
+  ): Promise<CareerProfileConfirmationDto> {
+    return this.careerProfileService.getConfirmation(conversationId, req.user.id);
   }
 }
 

@@ -1,0 +1,34 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNumber, IsEnum, IsOptional, Min } from 'class-validator';
+
+export class InitializePaymentDto {
+  @ApiProperty({
+    description: 'Amount to pay',
+    example: 5000,
+    minimum: 1,
+  })
+  @IsNumber()
+  @Min(1)
+  amount: number;
+
+  @ApiProperty({
+    description: 'Currency',
+    enum: ['NGN', 'USD'],
+    default: 'NGN',
+    required: false,
+  })
+  @IsEnum(['NGN', 'USD'])
+  @IsOptional()
+  currency?: 'NGN' | 'USD';
+
+  @ApiProperty({
+    description: 'Additional metadata',
+    required: false,
+  })
+  @IsOptional()
+  metadata?: Record<string, any>;
+}
+
+
+
+

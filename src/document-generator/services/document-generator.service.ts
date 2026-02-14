@@ -1,8 +1,31 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { AiChatService, ChatMessage } from '../../resume-builder/services/ai-chat.service';
 import { MessageRole } from '../../resume-builder/enums/message-role.enum';
 import { DocumentType } from '../enums/document-type.enum';
 import { ProfessionalProfileService } from '../../professional-profile/professional-profile.service';
+import { CoverLetterGeneratorService } from './cover-letter-generator.service';
+import { JobDescriptionParserService } from './job-description-parser.service';
+import { buildJsonOnlyInstruction, parseJsonObject } from '../../shared/utils/json-llm.util';
+import { UserContextService } from './user-context.service';
+
+export interface StructuredDocumentJson {
+  documentType: DocumentType | string;
+  meta?: {
+    targetRole?: string;
+    targetCompany?: string;
+    jobDescriptionSummary?: string;
+    tone?: string;
+  };
+  sections: Array<{
+    heading: string;
+    paragraphs?: string[];
+    bullets?: string[];
+  }>;
+  closing?: {
+    signoff?: string;
+    signature?: string;
+  };
+}
 
 @Injectable()
 export class DocumentGeneratorService {
@@ -11,6 +34,9 @@ export class DocumentGeneratorService {
   constructor(
     private aiChatService: AiChatService,
     private professionalProfileService: ProfessionalProfileService,
+    private coverLetterGenerator: CoverLetterGeneratorService,
+    private jobDescriptionParser: JobDescriptionParserService,
+    private userContextService: UserContextService,
   ) {}
 
   /**
@@ -23,13 +49,40 @@ export class DocumentGeneratorService {
     targetJobTitle?: string,
     targetCompany?: string,
     jobDescription?: string,
-  ): Promise<string> {
+  ): Promise<StructuredDocumentJson> {
     try {
+      // For cover letters, use the new structured generator
+      if (documentType === DocumentType.CoverLetter) {
+        const text = await this.coverLetterGenerator.generateCoverLetter(
+          userId,
+          jobDescription,
+          targetJobTitle,
+          targetCompany,
+        );
+        return {
+          documentType,
+          meta: {
+            targetRole: targetJobTitle,
+            targetCompany,
+            jobDescriptionSummary: jobDescription?.slice(0, 140),
+          },
+          sections: [{ heading: 'Cover Letter', paragraphs: [text] }],
+          closing: {},
+        };
+      }
+
+      // For personal statements, use the existing flow
+      // Get comprehensive context including all user data
+      const comprehensiveContext = await this.userContextService.buildComprehensiveContext(
+        userId,
+        jobDescription,
+      );
+
       // Get professional profile data
       const profile = await this.professionalProfileService.getProfileForGeneration(userId);
 
-      // Build context from profile
-      const profileContext = this.buildProfileContext(profile);
+      // Build context from profile (enhanced with comprehensive context)
+      const profileContext = this.buildProfileContext(profile, comprehensiveContext);
 
       // Create generation prompt based on document type
       const generatePrompt = this.getGenerationPrompt(
@@ -52,18 +105,64 @@ export class DocumentGeneratorService {
       // Get the AI response (the generated document)
       const documentContent = await this.aiChatService.chat(messagesWithPrompt);
 
-      // Extract the document from the response
-      const cleanedDocument = this.extractDocumentContent(documentContent, documentType);
+      const schemaDescription = `
+Top-level JSON object:
+- documentType: "${documentType}"
+- meta: object { targetRole?, targetCompany?, jobDescriptionSummary?, tone? }
+- sections: array of objects { heading: string, paragraphs?: string[], bullets?: string[] }
+- closing: object { signoff?, signature? }
+Return ONLY JSON.`;
 
-      return cleanedDocument;
+      const example: StructuredDocumentJson = {
+        documentType,
+        meta: {
+          targetRole: targetJobTitle,
+          targetCompany,
+          jobDescriptionSummary: jobDescription?.slice(0, 140),
+        },
+        sections: [
+          { heading: 'Opening', paragraphs: ['Dear Hiring Manager, ...'] },
+          {
+            heading: 'Body',
+            paragraphs: [
+              'I led...',
+              'I improved...',
+            ],
+          },
+          { heading: 'Closing', paragraphs: ['Thank you for your time.'] },
+        ],
+        closing: { signoff: 'Sincerely', signature: 'Jane Doe' },
+      };
+
+      const instruction = buildJsonOnlyInstruction(schemaDescription, example);
+      const structuredResponse = await this.aiChatService.chat([
+        { role: MessageRole.System, content: instruction },
+        ...messagesWithPrompt,
+        {
+          role: MessageRole.User,
+          content: 'Return the document as JSON only using the schema.',
+        },
+      ]);
+
+      const parsed = parseJsonObject<StructuredDocumentJson>(structuredResponse);
+      if (!parsed.ok || !parsed.data) {
+        throw new BadRequestException(parsed.error || 'Invalid JSON from model.');
+      }
+
+      return parsed.data;
     } catch (error) {
       this.logger.error('Error generating document', error);
       throw new Error(`Failed to generate ${documentType}. Please try again.`);
     }
   }
 
-  private buildProfileContext(profile: any): string {
+  private buildProfileContext(profile: any, comprehensiveContext?: string): string {
     let context = '';
+
+    // Add comprehensive context first (includes all resumes, documents, persona)
+    if (comprehensiveContext) {
+      context += `=== COMPREHENSIVE USER CONTEXT ===\n${comprehensiveContext}\n\n`;
+    }
 
     if (profile.careerGoals) {
       if (profile.careerGoals.targetRoles?.length > 0) {
@@ -84,6 +183,9 @@ export class DocumentGeneratorService {
       if (profile.persona.professionalVoice) {
         context += `Professional Voice: ${profile.persona.professionalVoice}\n`;
       }
+      if (profile.persona.writingStyle) {
+        context += `Writing Style: ${profile.persona.writingStyle}\n`;
+      }
     }
 
     if (profile.extractedData) {
@@ -93,7 +195,13 @@ export class DocumentGeneratorService {
       if (profile.extractedData.skills?.length > 0) {
         context += `Skills: ${profile.extractedData.skills.join(', ')}\n`;
       }
+      if (profile.extractedData.achievements?.length > 0) {
+        context += `Key Achievements: ${profile.extractedData.achievements.join(', ')}\n`;
+      }
     }
+
+    // Add previous document excerpts for style consistency
+    // This will be handled by comprehensiveContext which includes relevant past documents
 
     return context;
   }
@@ -105,8 +213,7 @@ export class DocumentGeneratorService {
     targetCompany?: string,
     jobDescription?: string,
   ): string {
-    if (documentType === DocumentType.CoverLetter) {
-      return `Based on all the information I've provided and the following context about my professional profile:
+    return `Based on all the information I've provided and the following context about my professional profile:
 
 ${profileContext}
 
@@ -114,36 +221,7 @@ ${targetJobTitle ? `Target Job Title: ${targetJobTitle}` : ''}
 ${targetCompany ? `Target Company: ${targetCompany}` : ''}
 ${jobDescription ? `Job Description:\n${jobDescription}` : ''}
 
-Please generate my complete cover letter now. Use the exact tone and style specified in my persona preferences. Make it personalized, compelling, and tailored to the position.`;
-    } else {
-      return `Based on all the information I've provided and the following context about my professional profile:
-
-${profileContext}
-
-Please generate my complete personal statement now. Use the exact tone and style specified in my persona preferences. Make it authentic, compelling, and reflective of my career journey and aspirations.`;
-    }
-  }
-
-  private extractDocumentContent(aiResponse: string, documentType: DocumentType): string {
-    // Look for common document markers
-    const markers = documentType === DocumentType.CoverLetter
-      ? ['Dear', 'To Whom It May Concern', 'Hiring Manager', 'Sincerely', 'Best regards']
-      : ['Personal Statement', 'Statement of Purpose', 'Introduction'];
-
-    let documentStartIndex = -1;
-    for (const marker of markers) {
-      const index = aiResponse.indexOf(marker);
-      if (index !== -1 && (documentStartIndex === -1 || index < documentStartIndex)) {
-        documentStartIndex = index;
-      }
-    }
-
-    if (documentStartIndex !== -1) {
-      return aiResponse.substring(documentStartIndex).trim();
-    }
-
-    // If no markers found, return the full response
-    return aiResponse.trim();
+Generate a complete ${documentType === DocumentType.CoverLetter ? 'cover letter' : 'personal statement'} now. Ensure the response is concise and structured.`;
   }
 }
 
