@@ -22,8 +22,14 @@ export class InitializePaymentDto {
   currency?: 'NGN' | 'USD';
 
   @ApiProperty({
-    description: 'Additional metadata',
+    description: 'Additional metadata to attach to the payment',
     required: false,
+    example: {
+      description: 'Premium subscription payment',
+      plan: 'premium',
+      userId: 'user-uuid',
+      features: ['unlimited-resumes', 'priority-support'],
+    },
   })
   @IsOptional()
   metadata?: Record<string, any>;

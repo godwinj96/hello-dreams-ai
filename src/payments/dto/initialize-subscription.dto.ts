@@ -12,8 +12,13 @@ export class InitializeSubscriptionDto {
   billingCycle: BillingCycle;
 
   @ApiProperty({
-    description: 'Additional metadata',
+    description: 'Additional metadata to attach to the subscription',
     required: false,
+    example: {
+      plan: 'premium',
+      features: ['unlimited-resumes', 'priority-support', 'advanced-ai'],
+      userId: 'user-uuid',
+    },
   })
   @IsOptional()
   metadata?: Record<string, any>;

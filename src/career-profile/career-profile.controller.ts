@@ -157,8 +157,50 @@ export class CareerProfileController {
   @Post('conversations/:id/upload-cv')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload and parse CV/resume' })
-  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiOperation({
+    summary: 'Upload and parse CV/resume',
+    description: `**Upload CV/Resume to Conversation**
+
+Upload your existing CV or resume (PDF or DOCX format) to add context to your career profile conversation. The file is automatically parsed and the content is extracted and added to the conversation context.
+
+**Supported Formats:**
+- PDF (.pdf)
+- Microsoft Word (.docx)
+
+**What Happens:**
+1. File is uploaded and stored securely
+2. Content is extracted (text, sections, formatting)
+3. Parsed content is added to the conversation context
+4. AI can now reference your CV when answering questions
+
+**Use Case:** 
+- Start a conversation without typing everything
+- Let AI analyze your existing CV
+- Get personalized career advice based on your actual experience
+
+**Example Request:**
+\`\`\`
+Content-Type: multipart/form-data
+
+file: [binary file data - PDF or DOCX]
+\`\`\`
+
+**Example Response:**
+\`\`\`json
+{
+  "message": "CV uploaded and parsed successfully",
+  "extractedContent": {
+    "sections": ["experience", "education", "skills"],
+    "summary": "Parsed CV content summary..."
+  }
+}
+\`\`\``,
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Conversation ID from POST /career-profile/conversations',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -166,15 +208,34 @@ export class CareerProfileController {
         file: {
           type: 'string',
           format: 'binary',
-          description: 'CV file (PDF or DOCX)',
+          description: 'CV/Resume file in PDF or DOCX format',
         },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'CV uploaded and parsed successfully',
+    type: UploadCvResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid file type or no file provided. Only PDF and DOCX files are supported.',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'No file provided' },
+        error: { type: 'string', example: 'Bad Request' },
       },
     },
   })
-  @ApiResponse({ status: 201, description: 'CV uploaded and parsed successfully', type: UploadCvResponseDto })
-  @ApiResponse({ status: 400, description: 'Invalid file type' })
-  @ApiResponse({ status: 404, description: 'Conversation not found' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 404,
+    description: 'Conversation not found - Invalid conversation ID',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
   async uploadCv(
     @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
@@ -189,8 +250,52 @@ export class CareerProfileController {
   @Post('conversations/:id/voice-message')
   @UseInterceptors(FileInterceptor('audio'))
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Send a voice message (audio will be transcribed)' })
-  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiOperation({
+    summary: 'Send a voice message (audio will be transcribed)',
+    description: `**Send Voice Message**
+
+Send an audio message to the career profile conversation. The audio is automatically transcribed using speech-to-text technology, and the transcribed text is processed as a regular message in the conversation.
+
+**Supported Audio Formats:**
+- MP3 (.mp3)
+- WAV (.wav)
+- Other common audio formats
+
+**Workflow:**
+1. Upload audio file
+2. Audio is transcribed to text
+3. Transcribed text is sent as a message to the AI
+4. AI responds based on the transcribed content
+
+**Use Cases:**
+- Speak your career questions instead of typing
+- Record voice notes about your experience
+- Faster input for longer responses
+
+**Example Request:**
+\`\`\`
+Content-Type: multipart/form-data
+
+audio: [binary audio file data - MP3, WAV, etc.]
+\`\`\`
+
+**Example Response:**
+\`\`\`json
+{
+  "message": "Voice message processed successfully",
+  "transcription": "I have 5 years of experience in software development...",
+  "aiResponse": {
+    "role": "assistant",
+    "content": "Based on your 5 years of experience..."
+  }
+}
+\`\`\``,
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Conversation ID from POST /career-profile/conversations',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -198,14 +303,34 @@ export class CareerProfileController {
         audio: {
           type: 'string',
           format: 'binary',
-          description: 'Audio file (MP3, WAV, etc.)',
+          description: 'Audio file (MP3, WAV, or other supported audio formats)',
         },
+      },
+      required: ['audio'],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Voice message transcribed and processed successfully',
+    type: VoiceMessageResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid audio file or no file provided',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: { type: 'string', example: 'No audio file provided' },
+        error: { type: 'string', example: 'Bad Request' },
       },
     },
   })
-  @ApiResponse({ status: 201, description: 'Voice message transcribed and processed', type: VoiceMessageResponseDto })
-  @ApiResponse({ status: 404, description: 'Conversation not found' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 404,
+    description: 'Conversation not found - Invalid conversation ID',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
   async sendVoiceMessage(
     @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
