@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmbeddingService, ContentType } from './embedding.service';
 import { UserContextEmbedding } from '../entities/user-context-embedding.entity';
+import { EmbeddingRetryService } from './embedding-retry.service';
 
 @Injectable()
 export class ContextIndexerService {
@@ -10,6 +11,7 @@ export class ContextIndexerService {
 
   constructor(
     private embeddingService: EmbeddingService,
+    private embeddingRetryService: EmbeddingRetryService,
     @InjectRepository(UserContextEmbedding)
     private embeddingRepository: Repository<UserContextEmbedding>,
   ) {}
@@ -21,10 +23,17 @@ export class ContextIndexerService {
     resumeId: string,
     userId: string,
     resumeContent: any,
-  ): Promise<UserContextEmbedding> {
+  ): Promise<UserContextEmbedding | null> {
     try {
       // Extract text from resume content
       const text = this.extractResumeText(resumeContent);
+
+      if (!text || text.trim().length === 0) {
+        this.logger.warn(
+          `Skipping resume embedding for resume ${resumeId}: extracted text is empty`,
+        );
+        return null;
+      }
 
       // Generate embedding
       const embeddingResult = await this.embeddingService.generateEmbedding(text);
@@ -64,8 +73,12 @@ export class ContextIndexerService {
         return await this.embeddingRepository.save(embedding);
       }
     } catch (error) {
-      this.logger.error(`Error indexing resume ${resumeId}`, error);
-      throw error;
+      this.logger.warn(
+        `Resume embedding indexing skipped for ${resumeId} (app continues without vector index)`,
+        error instanceof Error ? error.message : String(error),
+      );
+      this.embeddingRetryService.scheduleResumeReindex(resumeId, userId);
+      return null;
     }
   }
 
@@ -76,10 +89,17 @@ export class ContextIndexerService {
     documentId: string,
     userId: string,
     documentContent: any,
-  ): Promise<UserContextEmbedding> {
+  ): Promise<UserContextEmbedding | null> {
     try {
       // Extract text from document content
       const text = this.extractDocumentText(documentContent);
+
+      if (!text || text.trim().length === 0) {
+        this.logger.warn(
+          `Skipping document embedding for document ${documentId}: extracted text is empty`,
+        );
+        return null;
+      }
 
       // Generate embedding
       const embeddingResult = await this.embeddingService.generateEmbedding(text);
@@ -120,8 +140,12 @@ export class ContextIndexerService {
         return await this.embeddingRepository.save(embedding);
       }
     } catch (error) {
-      this.logger.error(`Error indexing document ${documentId}`, error);
-      throw error;
+      this.logger.warn(
+        `Document embedding indexing skipped for ${documentId} (app continues without vector index)`,
+        error instanceof Error ? error.message : String(error),
+      );
+      this.embeddingRetryService.scheduleDocumentReindex(documentId, userId);
+      return null;
     }
   }
 
@@ -131,10 +155,34 @@ export class ContextIndexerService {
   async indexPersona(
     userId: string,
     personaData: any,
-  ): Promise<UserContextEmbedding> {
+  ): Promise<UserContextEmbedding | null> {
     try {
       // Extract text from persona data
       const text = this.extractPersonaText(personaData);
+
+      // Guard: don't attempt embeddings for empty text.
+      // This can happen when a user hasn't generated/appplied persona yet.
+      if (!text || text.trim().length === 0) {
+        const currentPersona = personaData?.personaData?.currentPersona;
+        const idealPersona = personaData?.personaData?.idealPersona;
+        const hasPersonaFields =
+          !!personaData?.persona?.communicationStyle ||
+          !!personaData?.persona?.tone ||
+          !!personaData?.persona?.professionalVoice ||
+          !!personaData?.persona?.writingStyle ||
+          (Array.isArray(personaData?.persona?.personalityTraits) &&
+            personaData.persona.personalityTraits.length > 0);
+
+        this.logger.warn(
+          `Skipping persona embedding for user ${userId}: extracted persona text is empty`,
+          {
+            currentPersona: currentPersona ?? null,
+            idealPersona: idealPersona ?? null,
+            hasPersonaFields,
+          },
+        );
+        return null;
+      }
 
       // Generate embedding
       const embeddingResult = await this.embeddingService.generateEmbedding(text);
@@ -177,8 +225,12 @@ export class ContextIndexerService {
         return await this.embeddingRepository.save(embedding);
       }
     } catch (error) {
-      this.logger.error(`Error indexing persona for user ${userId}`, error);
-      throw error;
+      this.logger.warn(
+        `Persona/profile embedding indexing skipped for user ${userId} (app continues without vector index)`,
+        error instanceof Error ? error.message : String(error),
+      );
+      this.embeddingRetryService.schedulePersonaReindex(userId);
+      return null;
     }
   }
 
@@ -203,9 +255,18 @@ export class ContextIndexerService {
   private extractResumeText(resumeContent: any): string {
     const parts: string[] = [];
 
-    if (resumeContent.contactInfo) {
-      if (resumeContent.contactInfo.fullName) parts.push(`Name: ${resumeContent.contactInfo.fullName}`);
-      if (resumeContent.contactInfo.title) parts.push(`Title: ${resumeContent.contactInfo.title}`);
+    // ResumeData entity uses contactInfo; AI resume JSON (ResumeJson) uses contact
+    const contact = resumeContent.contactInfo || resumeContent.contact;
+    if (contact) {
+      if (contact.fullName) parts.push(`Name: ${contact.fullName}`);
+      if (contact.title) parts.push(`Title: ${contact.title}`);
+      if (contact.email) parts.push(`Email: ${contact.email}`);
+      if (contact.phone) parts.push(`Phone: ${contact.phone}`);
+      if (contact.location) parts.push(`Location: ${contact.location}`);
+      const links = contact.links;
+      if (links?.linkedIn) parts.push(`LinkedIn: ${links.linkedIn}`);
+      if (links?.github) parts.push(`GitHub: ${links.github}`);
+      if (links?.portfolio) parts.push(`Portfolio: ${links.portfolio}`);
     }
 
     if (resumeContent.summary) {
@@ -222,15 +283,31 @@ export class ContextIndexerService {
         if (exp.achievements && Array.isArray(exp.achievements)) {
           parts.push(`Achievements: ${exp.achievements.join(', ')}`);
         }
+        if (exp.highlights && Array.isArray(exp.highlights)) {
+          parts.push(`Highlights: ${exp.highlights.join(', ')}`);
+        }
+        if (exp.tools && Array.isArray(exp.tools)) {
+          parts.push(`Tools: ${exp.tools.join(', ')}`);
+        }
       });
     }
 
     if (resumeContent.skills) {
-      if (resumeContent.skills.technical && Array.isArray(resumeContent.skills.technical)) {
-        parts.push(`Technical Skills: ${resumeContent.skills.technical.join(', ')}`);
+      const sk = resumeContent.skills;
+      if (sk.core && Array.isArray(sk.core)) {
+        parts.push(`Core Skills: ${sk.core.join(', ')}`);
       }
-      if (resumeContent.skills.soft && Array.isArray(resumeContent.skills.soft)) {
-        parts.push(`Soft Skills: ${resumeContent.skills.soft.join(', ')}`);
+      if (sk.technical && Array.isArray(sk.technical)) {
+        parts.push(`Technical Skills: ${sk.technical.join(', ')}`);
+      }
+      if (sk.soft && Array.isArray(sk.soft)) {
+        parts.push(`Soft Skills: ${sk.soft.join(', ')}`);
+      }
+      if (sk.tools && Array.isArray(sk.tools)) {
+        parts.push(`Tools: ${sk.tools.join(', ')}`);
+      }
+      if (sk.languages && Array.isArray(sk.languages)) {
+        parts.push(`Languages: ${sk.languages.join(', ')}`);
       }
     }
 
@@ -241,7 +318,51 @@ export class ContextIndexerService {
       });
     }
 
-    return parts.join('\n');
+    if (resumeContent.projects && Array.isArray(resumeContent.projects)) {
+      resumeContent.projects.forEach((p: any) => {
+        if (p.name) parts.push(`Project: ${p.name}`);
+        if (p.description) parts.push(`Project description: ${p.description}`);
+        if (p.technologies && Array.isArray(p.technologies)) {
+          parts.push(`Technologies: ${p.technologies.join(', ')}`);
+        }
+      });
+    }
+
+    if (resumeContent.certifications && Array.isArray(resumeContent.certifications)) {
+      resumeContent.certifications.forEach((c: any) => {
+        if (c.name) parts.push(`Certification: ${c.name}`);
+      });
+    }
+
+    if (resumeContent.achievements && Array.isArray(resumeContent.achievements)) {
+      resumeContent.achievements.forEach((a: any) => {
+        if (a.title) parts.push(`Achievement: ${a.title}`);
+        if (a.description) parts.push(a.description);
+      });
+    }
+
+    const structured = parts.join('\n').trim();
+    if (structured.length > 0) {
+      return structured;
+    }
+
+    // Schema drift / legacy shapes: still embed something retrievable
+    if (
+      resumeContent &&
+      typeof resumeContent === 'object' &&
+      !Array.isArray(resumeContent) &&
+      Object.keys(resumeContent).length > 0
+    ) {
+      try {
+        const raw = JSON.stringify(resumeContent);
+        const maxFallback = 48_000;
+        return raw.length > maxFallback ? raw.slice(0, maxFallback) : raw;
+      } catch {
+        return '';
+      }
+    }
+
+    return '';
   }
 
   /**
@@ -269,9 +390,38 @@ export class ContextIndexerService {
     if (documentContent.meta) {
       if (documentContent.meta.targetRole) parts.push(`Target Role: ${documentContent.meta.targetRole}`);
       if (documentContent.meta.targetCompany) parts.push(`Target Company: ${documentContent.meta.targetCompany}`);
+      if (documentContent.meta.jobDescriptionSummary) {
+        parts.push(`Job summary: ${documentContent.meta.jobDescriptionSummary}`);
+      }
     }
 
-    return parts.join('\n');
+    if (documentContent.closing) {
+      const c = documentContent.closing;
+      if (c.signoff) parts.push(`Signoff: ${c.signoff}`);
+      if (c.signature) parts.push(`Signature: ${c.signature}`);
+    }
+
+    const structured = parts.join('\n').trim();
+    if (structured.length > 0) {
+      return structured;
+    }
+
+    if (
+      documentContent &&
+      typeof documentContent === 'object' &&
+      !Array.isArray(documentContent) &&
+      Object.keys(documentContent).length > 0
+    ) {
+      try {
+        const raw = JSON.stringify(documentContent);
+        const maxFallback = 48_000;
+        return raw.length > maxFallback ? raw.slice(0, maxFallback) : raw;
+      } catch {
+        return '';
+      }
+    }
+
+    return '';
   }
 
   /**

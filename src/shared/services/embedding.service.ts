@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import OpenAI, { APIError } from 'openai';
 
 export type ContentType = 'resume' | 'document' | 'conversation' | 'profile';
 
@@ -33,11 +33,21 @@ export class EmbeddingService {
   }
 
   /**
+   * True when OPENAI_API_KEY is set and the client was created.
+   * Retries are skipped when false (common cause of embedding failures).
+   */
+  isEmbeddingsAvailable(): boolean {
+    return this.openai !== null;
+  }
+
+  /**
    * Generate embedding for a text string
    */
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
     if (!this.openai) {
-      throw new Error('OpenAI API not configured');
+      throw new Error(
+        'OpenAI API not configured (missing OPENAI_API_KEY). Set OPENAI_API_KEY in the environment.',
+      );
     }
 
     if (!text || text.trim().length === 0) {
@@ -69,9 +79,29 @@ export class EmbeddingService {
         },
       };
     } catch (error) {
-      this.logger.error('Error generating embedding', error);
+      this.logger.error(
+        `Error generating embedding: ${this.describeEmbeddingError(error)}`,
+      );
       throw error;
     }
+  }
+
+  private describeEmbeddingError(error: unknown): string {
+    if (error instanceof APIError) {
+      const hint =
+        error.status === 401
+          ? ' (invalid or revoked API key)'
+          : error.status === 429
+            ? ' (rate limit — retry/backoff applies)'
+            : error.status === 503 || error.status === 502
+              ? ' (OpenAI temporarily unavailable)'
+              : '';
+      return `status=${error.status} code=${error.code ?? 'n/a'} type=${error.type ?? 'n/a'} message=${error.message}${hint}`;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
   }
 
   /**
@@ -136,17 +166,34 @@ export class EmbeddingService {
     limit: number = 10,
     minSimilarity: number = 0.5,
   ): Array<{ id: string; similarity: number; metadata?: any }> {
-    const similarities = candidateEmbeddings
-      .map((candidate) => ({
-        id: candidate.id,
-        similarity: this.cosineSimilarity(queryEmbedding, candidate.embedding),
-        metadata: candidate.metadata,
-      }))
+    const similarities: Array<{
+      id: string;
+      similarity: number;
+      metadata?: any;
+    }> = [];
+
+    for (const candidate of candidateEmbeddings) {
+      try {
+        const similarity = this.cosineSimilarity(
+          queryEmbedding,
+          candidate.embedding,
+        );
+        similarities.push({
+          id: candidate.id,
+          similarity,
+          metadata: candidate.metadata,
+        });
+      } catch {
+        this.logger.warn(
+          `Skipping stored embedding ${candidate.id}: invalid or mismatched vector`,
+        );
+      }
+    }
+
+    return similarities
       .filter((result) => result.similarity >= minSimilarity)
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, limit);
-
-    return similarities;
   }
 
   /**

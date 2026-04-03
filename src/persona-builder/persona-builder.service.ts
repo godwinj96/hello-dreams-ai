@@ -141,13 +141,29 @@ export class PersonaBuilderService {
       appliedPersona: false,
     };
 
+    const persona = this.buildPersonaStyle(
+      scoringResult.currentPersona,
+      scoringResult.idealPersona,
+    );
+
     // Update professional profile
     await this.professionalProfileService.updatePersonaData(userId, personaData);
+    await this.professionalProfileService.updatePersona(userId, persona);
 
     // Mark persona section as complete
     await this.professionalProfileService.markSectionComplete(userId, 'persona');
 
     const updatedProfile = await this.professionalProfileService.getProfile(userId);
+
+    // Helpful debug: if personaData isn't persisted correctly, we'll know here.
+    if (!updatedProfile.personaData?.currentPersona || !updatedProfile.personaData?.idealPersona) {
+      this.logger.warn('Persona generation completed but personaData is missing fields', {
+        userId,
+        currentPersona: updatedProfile.personaData?.currentPersona ?? null,
+        idealPersona: updatedProfile.personaData?.idealPersona ?? null,
+        appliedPersona: updatedProfile.personaData?.appliedPersona ?? null,
+      });
+    }
 
     // Map personaData with proper types (entity stores as string, DTO expects enum)
     const mappedPersonaData = updatedProfile.personaData ? {
@@ -161,7 +177,7 @@ export class PersonaBuilderService {
       } : undefined,
     } : personaData;
 
-    // Index persona/profile embedding
+    // Index persona/profile embedding (non-blocking; failures are logged inside ContextIndexerService)
     await this.contextIndexerService.indexPersona(userId, {
       persona: updatedProfile.persona,
       personaData: mappedPersonaData,
@@ -204,6 +220,15 @@ export class PersonaBuilderService {
     });
 
     const updatedProfile = await this.professionalProfileService.getProfile(userId);
+
+    if (updatedProfile.personaData?.appliedPersona !== true) {
+      this.logger.warn('Persona apply did not persist appliedPersona=true', {
+        userId,
+        appliedPersona: updatedProfile.personaData?.appliedPersona ?? null,
+        currentPersona: updatedProfile.personaData?.currentPersona ?? null,
+        idealPersona: updatedProfile.personaData?.idealPersona ?? null,
+      });
+    }
 
     const currentPersonaDescription =
       this.personaContentService.getPersonaDescription(
@@ -279,6 +304,74 @@ export class PersonaBuilderService {
       currentPersonaDescription,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
+    };
+  }
+
+  private buildPersonaStyle(
+    currentPersona: PersonaArchetype,
+    idealPersona?: PersonaArchetype,
+  ): {
+    communicationStyle: string;
+    tone: string;
+    professionalVoice: string;
+    writingStyle: string;
+    personalityTraits: string[];
+  } {
+    const byArchetype: Record<
+      PersonaArchetype,
+      {
+        communicationStyle: string;
+        tone: string;
+        professionalVoice: string;
+        writingStyle: string;
+        personalityTraits: string[];
+      }
+    > = {
+      [PersonaArchetype.Executor]: {
+        communicationStyle: 'structured and precise',
+        tone: 'professional and grounded',
+        professionalVoice: 'reliable expert',
+        writingStyle: 'concise and practical',
+        personalityTraits: ['dependable', 'detail-oriented', 'disciplined'],
+      },
+      [PersonaArchetype.Collaborator]: {
+        communicationStyle: 'inclusive and relational',
+        tone: 'warm and professional',
+        professionalVoice: 'supportive facilitator',
+        writingStyle: 'clear and audience-aware',
+        personalityTraits: ['empathetic', 'team-oriented', 'diplomatic'],
+      },
+      [PersonaArchetype.Innovator]: {
+        communicationStyle: 'vision-led and solution-focused',
+        tone: 'confident and forward-looking',
+        professionalVoice: 'creative strategist',
+        writingStyle: 'engaging and insight-driven',
+        personalityTraits: ['curious', 'inventive', 'adaptable'],
+      },
+      [PersonaArchetype.Leader]: {
+        communicationStyle: 'direct and strategic',
+        tone: 'confident and decisive',
+        professionalVoice: 'executive leader',
+        writingStyle: 'clear and outcome-oriented',
+        personalityTraits: ['assertive', 'strategic', 'influential'],
+      },
+    };
+
+    const currentStyle = byArchetype[currentPersona];
+    const idealStyle = idealPersona ? byArchetype[idealPersona] : undefined;
+
+    // Keep a stable, deterministic base from current persona and optionally
+    // blend one ideal-persona signal for guidance without changing core identity.
+    return {
+      ...currentStyle,
+      personalityTraits: idealStyle
+        ? Array.from(
+            new Set([
+              ...currentStyle.personalityTraits,
+              idealStyle.personalityTraits[0],
+            ]),
+          )
+        : currentStyle.personalityTraits,
     };
   }
 }

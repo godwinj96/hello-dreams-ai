@@ -762,6 +762,23 @@ Please use this persona to inform the tone and style of the resume.`;
     });
     if (!personaEmbedding) {
       const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+
+      // If personaData is empty here, it means the CV/resume flow is running before persona is created
+      // (or it was cleared / saved under a different userId).
+      if (
+        (!profile.personaData || !profile.personaData.currentPersona) &&
+        (!profile.personaData || !profile.personaData.idealPersona) &&
+        (!profile.persona || Object.keys(profile.persona).length === 0)
+      ) {
+        this.logger.warn('Backfill persona embedding: profile.personaData appears empty', {
+          userId,
+          hasPersona: !!profile.persona && Object.keys(profile.persona).length > 0,
+          currentPersona: profile.personaData?.currentPersona ?? null,
+          idealPersona: profile.personaData?.idealPersona ?? null,
+          appliedPersona: profile.personaData?.appliedPersona ?? null,
+        });
+      }
+
       await this.contextIndexerService.indexPersona(userId, {
         persona: profile.persona,
         personaData: profile.personaData,
