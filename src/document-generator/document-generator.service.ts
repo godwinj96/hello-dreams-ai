@@ -339,6 +339,25 @@ export class DocumentGeneratorServiceMain {
       ...chatMessages,
     ];
 
+    // For cover letters: extract targetCompany / targetJobTitle from the conversation
+    // messages if they were not set when the conversation was created (which is the
+    // common case when users start chatting before filling in metadata).
+    if (
+      conversation.documentType === DocumentType.CoverLetter &&
+      (!conversation.targetCompany || !conversation.targetJobTitle)
+    ) {
+      const extracted = await this.extractJobInfoFromMessages(chatMessages);
+      if (!conversation.targetCompany && extracted.company) {
+        conversation.targetCompany = extracted.company;
+      }
+      if (!conversation.targetJobTitle && extracted.jobTitle) {
+        conversation.targetJobTitle = extracted.jobTitle;
+      }
+      if (extracted.company || extracted.jobTitle) {
+        await this.conversationRepository.save(conversation);
+      }
+    }
+
     // Check if document already exists
     const existingDocument = await this.documentRepository.findOne({
       where: { conversationId },
@@ -680,6 +699,52 @@ Guidelines for the statement itself:
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     };
+  }
+
+  /**
+   * Extracts targetJobTitle and targetCompany from the user messages in a conversation.
+   * Used when these fields were not set at conversation-creation time.
+   * Fires a minimal AI call; any error returns an empty result (non-fatal).
+   */
+  private async extractJobInfoFromMessages(
+    messages: ChatMessage[],
+  ): Promise<{ company?: string; jobTitle?: string }> {
+    const userText = messages
+      .filter((m) => m.role === MessageRole.User)
+      .map((m) => m.content)
+      .join('\n');
+
+    if (!userText.trim()) return {};
+
+    try {
+      const response = await this.aiChatService.chat([
+        {
+          role: MessageRole.System,
+          content:
+            'Extract the target job title and company name from the user messages. Return ONLY a JSON object with exactly two keys: "jobTitle" and "company". Use null for any field that is not clearly mentioned.',
+        },
+        { role: MessageRole.User, content: userText.slice(0, 1500) },
+      ]);
+
+      const match = response.match(/\{[\s\S]*?\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        return {
+          company:
+            parsed.company && parsed.company !== 'null' && parsed.company !== ''
+              ? String(parsed.company).trim()
+              : undefined,
+          jobTitle:
+            parsed.jobTitle && parsed.jobTitle !== 'null' && parsed.jobTitle !== ''
+              ? String(parsed.jobTitle).trim()
+              : undefined,
+        };
+      }
+    } catch {
+      this.logger.warn('extractJobInfoFromMessages failed (non-fatal)');
+    }
+
+    return {};
   }
 
   /**

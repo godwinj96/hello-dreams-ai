@@ -634,9 +634,9 @@ Before generating the final resume, summarize:
 - Number of skills extracted
 - 2-3 highlights
 
-Then ask: "Would you like me to generate the final formatted CV now, or keep editing?"
+Then ask: "Would you like to generate your CV now? When you're ready, click the **Generate Resume** button below."
 
-When ready to generate, say: "Great! I now have everything I need. I will generate your ATS-friendly resume."
+When ready to generate, say: "I now have everything I need. Click the **Generate Resume** button below to create and download your ATS-friendly CV."
 
 7. USER CONTROL (Edit + Skip)
 
