@@ -3,6 +3,34 @@ import { AiChatService, ChatMessage } from './ai-chat.service';
 import { MessageRole } from '../enums/message-role.enum';
 import { buildJsonOnlyInstruction, parseJsonObject } from '../../shared/utils/json-llm.util';
 
+// Regex that matches bracket-style placeholder text, e.g. [Email Address], [Phone Number]
+const PLACEHOLDER_RE = /^\[.+\]$/;
+
+/**
+ * Recursively walk a parsed resume object and set any bracket-style placeholder
+ * strings to undefined so they are omitted from the final output rather than
+ * rendered as ugly "[Contact Information]" text in the template.
+ */
+function stripPlaceholders<T>(value: T): T {
+  if (typeof value === 'string') {
+    return PLACEHOLDER_RE.test(value.trim()) ? (undefined as unknown as T) : value;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map(stripPlaceholders)
+      .filter((v) => v !== undefined) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const stripped = stripPlaceholders(v);
+      if (stripped !== undefined) cleaned[k] = stripped;
+    }
+    return cleaned as T;
+  }
+  return value;
+}
+
 export interface ResumeJson {
   contact: {
     fullName?: string;
@@ -142,14 +170,14 @@ All sections are objects; subsections are nested objects/arrays.`;
         },
       ];
 
-      const resumeContent = await this.aiChatService.chat(messagesWithPrompt);
+      const resumeContent = await this.aiChatService.chat(messagesWithPrompt, 0.3);
       const parsed = parseJsonObject<ResumeJson>(resumeContent);
 
       if (!parsed.ok || !parsed.data) {
         throw new BadRequestException(parsed.error || 'Model did not return valid JSON.');
       }
 
-      return parsed.data;
+      return stripPlaceholders(parsed.data);
     } catch (error) {
       this.logger.error('Error generating resume', error);
       throw new Error('Failed to generate resume. Please try again.');

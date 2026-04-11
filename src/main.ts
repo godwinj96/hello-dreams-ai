@@ -4,6 +4,9 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -12,8 +15,17 @@ async function bootstrap() {
   });
   const configService = app.get(ConfigService);
 
+  // Apply request ID middleware (before security headers so ID is available in logs)
+  app.use(new RequestIdMiddleware().use.bind(new RequestIdMiddleware()));
+
   // Apply security headers middleware globally
   app.use(new SecurityHeadersMiddleware().use.bind(new SecurityHeadersMiddleware()));
+
+  // Register global exception filter (prevents stack trace leakage)
+  app.useGlobalFilters(new GlobalExceptionFilter());
+
+  // Register request logging interceptor
+  app.useGlobalInterceptors(new RequestLoggingInterceptor());
 
   // Configure request size limits
   app.use((req, res, next) => {

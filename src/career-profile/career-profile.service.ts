@@ -23,6 +23,7 @@ import {
 } from './dto/career-profile-response.dto';
 import { CareerProfileExtractorService } from './services/career-profile-extractor.service';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
+import { ContextIndexerService } from '../shared/services/context-indexer.service';
 import { VoiceService } from '../shared/services/voice.service';
 import { SupabaseStorageService } from '../shared/services/supabase-storage.service';
 import { CvParserService } from './services/cv-parser.service';
@@ -51,6 +52,7 @@ export class CareerProfileService {
     private usageTrackingService: UsageTrackingService,
     private dashboardEventService: DashboardEventService,
     private configService: ConfigService,
+    private contextIndexerService: ContextIndexerService,
   ) {}
 
   async createConversation(
@@ -201,8 +203,9 @@ export class CareerProfileService {
       content: msg.content,
     }));
 
-    // Add system prompt for career profile discovery
-    const systemPrompt = this.getCareerProfileSystemPrompt();
+    // Load existing profile so the AI skips questions already answered
+    const existingProfile = await this.professionalProfileService.getProfile(userId);
+    const systemPrompt = this.getCareerProfileSystemPrompt(existingProfile);
     const messagesWithSystem: ChatMessage[] = [
       { role: MessageRole.System, content: systemPrompt },
       ...chatMessages,
@@ -229,6 +232,15 @@ export class CareerProfileService {
 
     // Extract and update profile data after each message (for structured collection)
     await this.extractStructuredDataFromConversation(userId, messagesWithSystem);
+
+    // Index all user messages from this conversation so resume builder and document
+    // generator can semantically search through what the user said during onboarding.
+    // Fire-and-forget — never block the response on embedding latency.
+    const allUserMessages = messagesWithSystem
+      .filter((m) => m.role === MessageRole.User)
+      .map((m) => m.content);
+    this.contextIndexerService.indexConversation(conversationId, userId, allUserMessages)
+      .catch((err) => this.logger.warn('Conversation embedding failed (non-fatal)', err));
 
     // Track usage with costs
     if (usageData) {
@@ -474,8 +486,56 @@ export class CareerProfileService {
     return await this.messageRepository.save(message);
   }
 
-  private getCareerProfileSystemPrompt(): string {
+  private getCareerProfileSystemPrompt(existingProfile?: any): string {
+    // Build a "known info" block so the AI never re-asks for data already collected
+    const knownParts: string[] = [];
+
+    if (existingProfile?.basicInfo) {
+      const b = existingProfile.basicInfo;
+      if (b.name) knownParts.push(`Full name: ${b.name}`);
+      if (b.email) knownParts.push(`Email: ${b.email}`);
+      if (b.phone) knownParts.push(`Phone: ${b.phone}`);
+      const location = [b.city, b.state, b.country].filter(Boolean).join(', ');
+      if (location) knownParts.push(`Location: ${location}`);
+      if (b.linkedIn) knownParts.push(`LinkedIn: ${b.linkedIn}`);
+    }
+
+    if (existingProfile?.targetJob) {
+      const t = existingProfile.targetJob;
+      if (t.targetJobTitle) knownParts.push(`Target job title: ${t.targetJobTitle}`);
+      if (t.careerGoal) knownParts.push(`Career goal: ${t.careerGoal}`);
+      if (t.salaryExpectation) knownParts.push(`Salary expectation: ${t.salaryExpectation}`);
+    }
+
+    if (existingProfile?.careerGoals) {
+      const g = existingProfile.careerGoals;
+      if (g.careerAspirations) knownParts.push(`Career aspirations: ${g.careerAspirations}`);
+      if (g.targetRoles?.length) knownParts.push(`Target roles: ${g.targetRoles.join(', ')}`);
+      if (g.targetIndustries?.length) knownParts.push(`Target industries: ${g.targetIndustries.join(', ')}`);
+    }
+
+    if (existingProfile?.cvMetadata) {
+      const cv = existingProfile.cvMetadata;
+      if (cv.experienceLevel) knownParts.push(`Experience level: ${cv.experienceLevel}`);
+      if (cv.pastJobTitles?.length) knownParts.push(`Past job titles: ${cv.pastJobTitles.join(', ')}`);
+    }
+
+    const knownSection = knownParts.length > 0
+      ? `\n\n--- ALREADY COLLECTED (do NOT ask for these again) ---\n${knownParts.join('\n')}\n--- END KNOWN INFO ---\n`
+      : '';
+
     return `You are a career discovery assistant helping users understand their career goals, aspirations, and professional profile.
+${knownSection}
+════════════════════════════════════════
+ABSOLUTE RULE — ONE QUESTION PER MESSAGE
+════════════════════════════════════════
+Every message you send must contain EXACTLY ONE question.
+Count the question marks before sending. If there is more than one, remove all but the most important one.
+No exceptions.
+
+WRONG ✗ — "What roles are you targeting, and what industries interest you?"
+RIGHT ✓ — "What kind of role are you aiming for next?"
+════════════════════════════════════════
 
 Your role is to:
 1. Ask thoughtful questions about their career aspirations, target roles, industries, and professional goals
@@ -483,15 +543,16 @@ Your role is to:
 3. Discover their background, experience, skills, and achievements
 4. Guide them to think about their future career path
 
-Ask one question at a time and be conversational and encouraging. Focus on understanding:
-- What roles/positions they're targeting
-- What industries or sectors interest them
-- Their career aspirations and long-term goals
+Be conversational and encouraging. Focus on understanding:
+- What roles/positions they're targeting (if not already known)
+- What industries or sectors interest them (if not already known)
+- Their career aspirations and long-term goals (if not already known)
 - Their work style preferences
 - Their values and what matters to them professionally
-- Their background and experience
-- Their skills and achievements
+- Their background, experience, skills, and achievements
 - Their education and certifications
+
+If a piece of information is already listed in the ALREADY COLLECTED section above, acknowledge it naturally ("I can see you're targeting [role]...") and move on to gather new information. Never ask the user to repeat something already collected.
 
 Be warm, supportive, and help them think deeply about their career journey.`;
   }

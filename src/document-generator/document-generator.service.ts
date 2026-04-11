@@ -76,16 +76,21 @@ export class DocumentGeneratorServiceMain {
 
     const savedConversation = await this.conversationRepository.save(conversation);
 
-    // Backfill any missing embeddings for this user (documents, resumes, persona)
-    await this.backfillUserEmbeddings(userId);
+    // Backfill any missing embeddings for this user — fire-and-forget
+    this.backfillUserEmbeddings(userId).catch((err) =>
+      this.logger.warn('Embedding backfill failed (non-fatal)', err),
+    );
 
-    // Build context and name for greeting
+    // Fetch profile for the user's name (used in greeting).
+    // For CoverLetter, the greeting is a static string — skip the expensive
+    // embedding/context build that is only needed for AI-generated greetings.
     const profile = await this.professionalProfileService.getProfileForGeneration(userId);
     const name = profile.basicInfo?.name || 'there';
-    const comprehensiveContext = await this.userContextService.buildComprehensiveContext(
-      userId,
-      createDto.jobDescription || '',
-    );
+    if (createDto.documentType !== DocumentType.CoverLetter) {
+      // Fire-and-forget: pre-warm context for non-cover-letter AI greetings
+      this.userContextService.buildComprehensiveContext(userId, createDto.jobDescription || '')
+        .catch((err) => this.logger.warn('Context pre-warm failed (non-fatal)', err));
+    }
 
     // Send initial greeting from AI based on document type
     let initialGreeting: string;
@@ -353,8 +358,10 @@ export class DocumentGeneratorServiceMain {
       existingDocument.version += 1;
       const updated = await this.documentRepository.save(existingDocument);
       
-      // Index document embedding
-      await this.contextIndexerService.indexDocument(updated.id, userId, updated.content);
+      // Index document embedding — fire-and-forget
+      this.contextIndexerService.indexDocument(updated.id, userId, updated.content).catch((err) =>
+        this.logger.warn('Document re-index failed (non-fatal)', err),
+      );
       
       // Track document generation
       this.usageTrackingService
@@ -515,8 +522,10 @@ export class DocumentGeneratorServiceMain {
 
     const saved = await this.documentRepository.save(document);
 
-    // Index document embedding
-    await this.contextIndexerService.indexDocument(saved.id, userId, saved.content);
+    // Index document embedding — fire-and-forget
+    this.contextIndexerService.indexDocument(saved.id, userId, saved.content).catch((err) =>
+      this.logger.warn('Document index failed (non-fatal)', err),
+    );
 
     // Mark section as complete
     if (conversation.documentType === DocumentType.CoverLetter) {
@@ -563,49 +572,71 @@ Please use this persona to inform the tone and style of the ${documentType === D
       : '';
 
     if (documentType === DocumentType.CoverLetter) {
-      return `You are a professional cover letter writer. Your task is to help users create compelling, personalized cover letters.
+      return `You are a professional cover letter writer having a friendly, one-on-one conversation with your client. Your goal is to gather everything you need to write them a compelling, tailored cover letter — but through natural conversation, not an interrogation.
 
 ${personaContext}
 
-Guidelines:
-- Make the cover letter specific to the position and company
-- Highlight relevant experience and skills
-- Show enthusiasm and genuine interest
-- Keep it concise (typically 3-4 paragraphs)
-- Use professional but engaging language
-- Match the tone and style to the user's persona preferences
-- Include specific examples when possible
+════════════════════════════════════════
+ABSOLUTE RULE — ONE QUESTION PER MESSAGE
+════════════════════════════════════════
+Every message you send must contain EXACTLY ONE question.
+Count the question marks before sending. If there is more than one, remove all but the most important one.
+No exceptions.
 
-Ask questions to gather:
-- Target position and company
-- Key requirements from the job description
-- Relevant experience and achievements
-- Why they're interested in the role
-- What they can bring to the company
+WRONG ✗ — "What role are you applying for, and can you share the job description and your relevant experience?"
+RIGHT ✓ — "What role are you applying for?"
+════════════════════════════════════════
 
-When ready, generate a complete, polished cover letter.`;
+Never do this ❌: "What role are you applying for, and can you share the job description and your relevant experience?"
+Always do this ✅: "What role are you applying for?" → [wait] → "And which company is this for?" → [wait] → "Do you have the job description handy? You can paste it in."
+
+Collect these in order, one at a time:
+1. What role they're applying for
+2. Which company
+3. The job description (ask them to paste it, or key requirements if they don't have it)
+4. A relevant achievement or experience that fits the role ("What's one thing from your background that makes you a strong fit?")
+5. Why they want this specific role at this specific company ("What draws you to [Company] in particular?")
+
+Once you have enough to write a strong letter, say: "Perfect — I have everything I need. Let me write your cover letter now." Then generate it.
+
+Guidelines for the letter itself:
+- Specific to the position and company, never generic
+- 3-4 focused paragraphs
+- Professional but engaging language matching the user's persona
+- Concrete examples over vague claims`;
     } else {
-      return `You are a professional personal statement writer. Your task is to help users craft authentic, compelling personal statements.
+      return `You are a personal statement writer having a warm, encouraging conversation with your client. Your role is to draw out their story and experiences through thoughtful questions — not a checklist — and use what you learn to write a compelling, authentic personal statement.
 
 ${personaContext}
 
-Guidelines:
-- Make it personal and authentic
-- Tell a story that connects to their goals
-- Highlight relevant experiences and achievements
-- Show growth and learning
-- Demonstrate passion and commitment
-- Use the tone and style matching the user's persona preferences
-- Keep it focused and well-structured
+════════════════════════════════════════
+ABSOLUTE RULE — ONE QUESTION PER MESSAGE
+════════════════════════════════════════
+Every message you send must contain EXACTLY ONE question.
+Count the question marks before sending. If there is more than one, remove all but the most important one.
+No exceptions.
 
-Ask questions to gather:
-- Purpose of the personal statement
-- Key experiences and achievements to highlight
-- Career goals and aspirations
-- What makes them unique
-- Why they're pursuing this path
+WRONG ✗ — "What's the purpose of your personal statement, what experiences do you want to highlight, and what are your career goals?"
+RIGHT ✓ — "What's this personal statement for — a graduate programme, scholarship, something else?"
+════════════════════════════════════════
 
-When ready, generate a complete, polished personal statement.`;
+Never do this ❌: "What's the purpose of your personal statement, what experiences do you want to highlight, and what are your career goals?"
+Always do this ✅: "What's this personal statement for — a graduate programme, scholarship, something else?" → [wait] → "Great. What's the main thing you want the reader to come away thinking about you?" → [wait] → "Tell me about an experience that shaped that."
+
+Collect these in order, one at a time:
+1. Purpose of the statement (application type, institution if known)
+2. What they most want the reader to remember about them
+3. A defining experience or achievement relevant to the application
+4. Their career or academic goals
+5. What makes their path or perspective distinctive ("Is there something about your journey that's a bit different or unexpected?")
+
+Once you have a clear picture, say: "That's really compelling — I have what I need. Here's your personal statement." Then generate it.
+
+Guidelines for the statement itself:
+- Personal, authentic, and story-driven
+- Connects their past to their future goals
+- Shows growth, not just accomplishment
+- Matches the tone and voice of the user's persona`;
     }
   }
 
@@ -669,11 +700,10 @@ When ready, generate a complete, polished personal statement.`;
         const resumeData = await this.resumeDataRepository.findOne({
           where: { resumeId: resume.id },
         });
-        if (resumeData) {
-          await this.contextIndexerService.indexResume(resume.id, userId, resumeData);
-        } else {
-          await this.contextIndexerService.indexResume(resume.id, userId, resume.content);
-        }
+        const content = resumeData ?? resume.content;
+        await this.contextIndexerService.indexResume(resume.id, userId, content).catch((err) =>
+          this.logger.warn(`Backfill resume ${resume.id} failed`, err),
+        );
       }
     }
 
@@ -687,7 +717,9 @@ When ready, generate a complete, polished personal statement.`;
         where: { userId, contentType: 'document', contentId: doc.id },
       });
       if (!exists) {
-        await this.contextIndexerService.indexDocument(doc.id, userId, doc.content);
+        await this.contextIndexerService.indexDocument(doc.id, userId, doc.content).catch((err) =>
+          this.logger.warn(`Backfill document ${doc.id} failed`, err),
+        );
       }
     }
 
@@ -716,7 +748,7 @@ When ready, generate a complete, polished personal statement.`;
         persona: profile.persona,
         personaData: profile.personaData,
         careerGoals: profile.careerGoals,
-      });
+      }).catch((err) => this.logger.warn(`Backfill persona for ${userId} failed`, err));
     }
   }
 }

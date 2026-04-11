@@ -1,4 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+
+const ALLOWED_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp']);
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -37,7 +39,13 @@ export class SupabaseStorageService {
       throw new BadRequestException('Supabase storage not configured');
     }
 
-    const fileExt = file.originalname.split('.').pop();
+    const rawExt = file.originalname.split('.').pop()?.toLowerCase() ?? '';
+    if (!ALLOWED_IMAGE_EXTENSIONS.has(rawExt)) {
+      throw new BadRequestException(
+        `Invalid file extension. Allowed: ${Array.from(ALLOWED_IMAGE_EXTENSIONS).join(', ')}`,
+      );
+    }
+    const fileExt = rawExt;
     const fileName = `${folder}/${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
     try {

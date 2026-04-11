@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { validateEnv } from './config/env.validation';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -43,27 +44,13 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      validate: validateEnv,
     }),
     ThrottlerModule.forRoot([
       {
         name: 'default',
         ttl: 60000, // 1 minute
-        limit: 100, // 100 requests per minute for standard endpoints
-      },
-      {
-        name: 'ai-generation',
-        ttl: 3600000, // 1 hour
-        limit: 10, // 10 requests per hour for AI generation
-      },
-      {
-        name: 'chat',
-        ttl: 3600000, // 1 hour
-        limit: 30, // 30 requests per hour for chat/message endpoints
-      },
-      {
-        name: 'public',
-        ttl: 60000, // 1 minute
-        limit: 20, // 20 requests per minute for public endpoints
+        limit: 100, // 100 requests per minute
       },
     ]),
     TypeOrmModule.forRootAsync({

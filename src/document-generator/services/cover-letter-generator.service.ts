@@ -8,6 +8,7 @@ import { Resume } from '../../resume-builder/entities/resume.entity';
 import { MessageRole } from '../../resume-builder/enums/message-role.enum';
 import { PromptInjectionGuardService } from '../../shared/services/prompt-injection-guard.service';
 import { UserContextService } from './user-context.service';
+import { ProfessionalProfileService } from '../../professional-profile/professional-profile.service';
 
 export interface CoverLetterSections {
   header: {
@@ -44,6 +45,7 @@ export class CoverLetterGeneratorService {
     private resumeRepository: Repository<Resume>,
     private promptInjectionGuard: PromptInjectionGuardService,
     private userContextService: UserContextService,
+    private professionalProfileService: ProfessionalProfileService,
   ) {}
 
   /**
@@ -75,8 +77,19 @@ export class CoverLetterGeneratorService {
       // Get all resumes for comprehensive skill/experience extraction
       const allResumes = await this.userContextService.getAllUserResumes(userId);
 
-      // Get user's basic info from profile
-      // This will be injected via the main service
+      // Get basic info from professional profile — used as fallback when no resume exists yet
+      const profile = await this.professionalProfileService.getProfile(userId).catch(() => null);
+      const basicInfo = profile?.basicInfo ?? {};
+
+      // Semantically extract the best-matched skills and experience from ALL past content
+      // (resumes + career profile conversations) using the job description as the query.
+      // Falls back to empty arrays gracefully if embeddings are unavailable.
+      const [semanticSkills, semanticExperience] = jobDescription
+        ? await Promise.all([
+            this.userContextService.extractRelevantSkills(userId, jobDescription),
+            this.userContextService.extractRelevantExperience(userId, jobDescription),
+          ])
+        : [[], []];
 
       // Generate sections with comprehensive context
       const sections = await this.generateSections(
@@ -86,6 +99,9 @@ export class CoverLetterGeneratorService {
         targetCompany || parsedJobDescription?.companyName,
         comprehensiveContext,
         allResumes,
+        basicInfo,
+        semanticSkills,
+        semanticExperience,
       );
 
       // Format into complete cover letter
@@ -128,20 +144,29 @@ export class CoverLetterGeneratorService {
     targetCompany?: string,
     comprehensiveContext?: string,
     allResumes?: ResumeData[],
+    basicInfo: Record<string, any> = {},
+    semanticSkills: string[] = [],
+    semanticExperience: string[] = [],
   ): Promise<CoverLetterSections> {
     // Extract key achievements from all resumes
     const achievements = this.extractAchievementsFromAllResumes(allResumes || (resumeData ? [resumeData] : []));
-    const topSkills = this.extractTopSkillsFromAllResumes(allResumes || (resumeData ? [resumeData] : []));
+    // Merge resume-extracted skills with semantically matched skills from all past content.
+    // Deduplicate so skills from onboarding conversations surface alongside resume skills.
+    const resumeSkills = this.extractTopSkillsFromAllResumes(allResumes || (resumeData ? [resumeData] : []));
+    const topSkills = [...new Set([...resumeSkills, ...semanticSkills])];
     const experience = resumeData?.workExperience || [];
 
-    // Generate header
+    // Build header — resume contact info is preferred; fall back to ProfessionalProfile.basicInfo
+    // so users who haven't built a resume yet still get their name/email in the cover letter.
+    const profileLocation = [basicInfo.city, basicInfo.state, basicInfo.country]
+      .filter(Boolean).join(', ');
     const header = {
-      name: resumeData?.contactInfo?.fullName || 'Your Name',
-      title: targetJobTitle || resumeData?.contactInfo?.linkedIn || undefined,
-      phone: resumeData?.contactInfo?.phone || '',
-      email: resumeData?.contactInfo?.email || '',
-      linkedIn: resumeData?.contactInfo?.linkedIn,
-      location: resumeData?.contactInfo?.location,
+      name: resumeData?.contactInfo?.fullName || basicInfo.name || 'Your Name',
+      title: targetJobTitle || undefined,
+      phone: resumeData?.contactInfo?.phone || basicInfo.phone || '',
+      email: resumeData?.contactInfo?.email || basicInfo.email || '',
+      linkedIn: resumeData?.contactInfo?.linkedIn || basicInfo.linkedIn,
+      location: resumeData?.contactInfo?.location || profileLocation || undefined,
     };
 
     // Generate company address
@@ -160,9 +185,13 @@ export class CoverLetterGeneratorService {
       comprehensiveContext,
     );
 
-    // Generate core paragraph (2-3 top achievements) with context
+    // Generate core paragraph — prefer resume achievements, supplement with semantically
+    // matched experience snippets from onboarding conversations if achievements are sparse.
+    const coreAchievements = achievements.length > 0
+      ? achievements.slice(0, 3)
+      : semanticExperience.slice(0, 3);
     const core = await this.generateCoreParagraph(
-      achievements.slice(0, 3),
+      coreAchievements,
       parsedJobDescription?.keyResponsibilities || [],
       comprehensiveContext,
     );
@@ -177,6 +206,7 @@ export class CoverLetterGeneratorService {
     // Generate cultural fit paragraph
     const culturalFit = await this.generateCulturalFitParagraph(
       targetCompany || parsedJobDescription?.companyName,
+      comprehensiveContext,
     );
 
     // Generate closing paragraph
@@ -255,8 +285,8 @@ export class CoverLetterGeneratorService {
     yearsExperience: number,
     comprehensiveContext?: string,
   ): Promise<string> {
-    const contextSection = comprehensiveContext 
-      ? `\n\nAdditional context about the candidate:\n${comprehensiveContext.substring(0, 1000)}`
+    const contextSection = comprehensiveContext
+      ? `\n\nAdditional context about the candidate:\n${comprehensiveContext.substring(0, 2500)}${comprehensiveContext.length > 2500 ? '...' : ''}`
       : '';
 
     const prompt = `Write a strong opening paragraph for a cover letter. The candidate is ${name} with approximately ${yearsExperience} years of experience. They are applying for the ${jobTitle} position at ${companyName}.${contextSection}
@@ -290,8 +320,8 @@ Write only the opening paragraph (2-3 sentences). Use confident, professional la
       return 'I bring a strong track record of delivering impactful results and driving success in challenging environments.';
     }
 
-    const contextSection = comprehensiveContext 
-      ? `\n\nAdditional context about the candidate's background and experience:\n${comprehensiveContext.substring(0, 800)}`
+    const contextSection = comprehensiveContext
+      ? `\n\nAdditional context about the candidate's background and experience:\n${comprehensiveContext.substring(0, 2000)}${comprehensiveContext.length > 2000 ? '...' : ''}`
       : '';
 
     const prompt = `Write a core paragraph for a cover letter that presents 2-3 key achievements as evidence of fit. 
@@ -346,8 +376,14 @@ Mention 3-5 matching skills/tools in a natural way.`;
   /**
    * Generate cultural fit paragraph
    */
-  private async generateCulturalFitParagraph(companyName?: string): Promise<string> {
-    const prompt = `Write 1 sentence about why the candidate is excited about ${companyName || 'this opportunity'} and what excites them about the mission/company. Keep it brief and authentic.`;
+  private async generateCulturalFitParagraph(
+    companyName?: string,
+    comprehensiveContext?: string,
+  ): Promise<string> {
+    const contextSection = comprehensiveContext
+      ? `\n\nCandidate's professional persona and values:\n${comprehensiveContext.substring(0, 1500)}${comprehensiveContext.length > 1500 ? '...' : ''}`
+      : '';
+    const prompt = `Write 1 sentence about why the candidate is excited about ${companyName || 'this opportunity'} and what excites them about the mission/company. Keep it brief and authentic. Ground it in the candidate's actual values and professional persona.${contextSection}`;
 
     const response = await this.openAIService.chat([
       { role: MessageRole.System, content: 'You are a professional cover letter writer.' },

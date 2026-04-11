@@ -11,6 +11,7 @@ import {
   HttpStatus,
   Req,
   Headers,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import {
@@ -256,7 +257,7 @@ This endpoint receives webhook events from Paystack to update payment and subscr
     );
 
     if (!isValid) {
-      throw new Error('Invalid webhook signature');
+      throw new UnauthorizedException('Invalid webhook signature');
     }
 
     // Handle different event types

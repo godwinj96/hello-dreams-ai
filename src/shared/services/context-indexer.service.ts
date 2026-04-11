@@ -235,6 +235,61 @@ export class ContextIndexerService {
   }
 
   /**
+   * Index a career profile conversation by concatenating all user messages.
+   * This makes everything the user says during onboarding (name, experience, goals)
+   * searchable by resume builder and document generator via semantic similarity.
+   *
+   * Uses the conversationId as contentId so the record is upserted on subsequent calls
+   * (the conversation grows over time — we overwrite with the latest full text).
+   */
+  async indexConversation(
+    conversationId: string,
+    userId: string,
+    userMessages: string[],
+  ): Promise<UserContextEmbedding | null> {
+    try {
+      const text = userMessages
+        .map((m) => m.trim())
+        .filter((m) => m.length > 0)
+        .join('\n');
+
+      if (!text) {
+        this.logger.warn(`Skipping conversation embedding for ${conversationId}: no user messages`);
+        return null;
+      }
+
+      const embeddingResult = await this.embeddingService.generateEmbedding(text);
+
+      const existing = await this.embeddingRepository.findOne({
+        where: { userId, contentType: 'conversation', contentId: conversationId },
+      });
+
+      if (existing) {
+        existing.content = text;
+        existing.embedding = embeddingResult.embedding;
+        existing.metadata = { ...existing.metadata, model: embeddingResult.model, updatedAt: new Date().toISOString() };
+        return await this.embeddingRepository.save(existing);
+      }
+
+      const embedding = this.embeddingRepository.create({
+        userId,
+        contentType: 'conversation',
+        contentId: conversationId,
+        content: text,
+        embedding: embeddingResult.embedding,
+        metadata: { model: embeddingResult.model, createdAt: new Date().toISOString() },
+      });
+      return await this.embeddingRepository.save(embedding);
+    } catch (error) {
+      this.logger.warn(
+        `Conversation embedding skipped for ${conversationId} (app continues)`,
+        error instanceof Error ? error.message : String(error),
+      );
+      return null;
+    }
+  }
+
+  /**
    * Delete embedding by contentId and contentType
    */
   async deleteEmbedding(

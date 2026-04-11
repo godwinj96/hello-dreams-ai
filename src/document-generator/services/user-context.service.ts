@@ -247,6 +247,35 @@ export class UserContextService {
   ): Promise<string> {
     const parts: string[] = [];
 
+    // Get professional profile (basic info, cv metadata, target job)
+    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+
+    // Include basic contact info so downstream prompts have the user's name/email/phone
+    if (profile.basicInfo && Object.keys(profile.basicInfo).length > 0) {
+      const b = profile.basicInfo;
+      parts.push('=== BASIC INFO ===');
+      if (b.name) parts.push(`Name: ${b.name}`);
+      if (b.email) parts.push(`Email: ${b.email}`);
+      if (b.phone) parts.push(`Phone: ${b.phone}`);
+      const location = [b.city, b.state, b.country].filter(Boolean).join(', ');
+      if (location) parts.push(`Location: ${location}`);
+      if (b.linkedIn) parts.push(`LinkedIn: ${b.linkedIn}`);
+    }
+
+    // Include CV metadata (work history / experience level) for richer context
+    if (profile.extractedData && Object.keys(profile.extractedData).length > 0) {
+      const e = profile.extractedData;
+      parts.push('\n=== CAREER BACKGROUND ===');
+      if (e.background) parts.push(`Background: ${e.background}`);
+      if (e.experience) parts.push(`Experience: ${e.experience}`);
+      if (e.skills && e.skills.length > 0) parts.push(`Key Skills: ${e.skills.join(', ')}`);
+      if (e.achievements && e.achievements.length > 0) {
+        parts.push('Key Achievements:');
+        e.achievements.forEach((a) => parts.push(`  - ${a}`));
+      }
+      if (e.education) parts.push(`Education: ${e.education}`);
+    }
+
     // Get all resumes
     const resumes = await this.getAllUserResumes(userId);
     if (resumes.length > 0) {
@@ -297,8 +326,7 @@ export class UserContextService {
       }
     }
 
-    // Get persona data
-    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+    // Persona & communication style (profile already fetched above)
     if (profile.persona || profile.personaData) {
       parts.push('\n=== PERSONA & COMMUNICATION STYLE ===');
       if (profile.persona) {

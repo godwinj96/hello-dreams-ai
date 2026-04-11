@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npx skills:*)",
+      "Read(//c/Users/BBPC/Documents/Projects/hello-dreams-ai/src/**)",
+      "Read(//c/Users/BBPC/Documents/Projects/hello-dreams-ai/**)",
+      "Bash(find C:\\\\Users\\\\BBPC\\\\Documents\\\\Projects\\\\hello-dreams-ai-frontend\\\\hello-dreams-ai\\\\src:*)"
+    ]
+  }
+}

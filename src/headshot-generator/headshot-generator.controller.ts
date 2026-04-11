@@ -20,10 +20,15 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { HeadshotGeneratorService } from './headshot-generator.service';
 import { HeadshotGeneration, HeadshotStyle, HeadshotPersonaType } from './entities/headshot-generation.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
+import { GenerateHeadshotDto } from './dto/generate-headshot.dto';
+
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 @ApiTags('headshot-generator')
 @ApiBearerAuth('JWT-auth')
@@ -35,7 +40,24 @@ export class HeadshotGeneratorController {
   ) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_FILE_SIZE },
+      fileFilter: (_req, file, callback) => {
+        if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+          callback(null, true);
+        } else {
+          callback(
+            new BadRequestException(
+              `Invalid file type. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}`,
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Upload original image for headshot generation',
@@ -299,11 +321,7 @@ If one provider fails, the system automatically tries the next. This ensures hig
   @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
   async generateHeadshots(
     @Request() req,
-    @Body() body: {
-      originalImageUrl: string;
-      style: HeadshotStyle;
-      personaType?: HeadshotPersonaType;
-    },
+    @Body() body: GenerateHeadshotDto,
   ): Promise<HeadshotGeneration> {
     return this.headshotGeneratorService.generateHeadshots(
       req.user.id,

@@ -177,12 +177,12 @@ export class PersonaBuilderService {
       } : undefined,
     } : personaData;
 
-    // Index persona/profile embedding (non-blocking; failures are logged inside ContextIndexerService)
-    await this.contextIndexerService.indexPersona(userId, {
+    // Index persona/profile embedding — fire-and-forget
+    this.contextIndexerService.indexPersona(userId, {
       persona: updatedProfile.persona,
       personaData: mappedPersonaData,
       careerGoals: updatedProfile.careerGoals,
-    });
+    }).catch((err) => this.logger.warn('Persona index failed (non-fatal)', err));
 
     // Track persona generation
     this.usageTrackingService

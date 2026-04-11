@@ -29,6 +29,7 @@ import { DashboardEventService } from '../admin/services/dashboard-event.service
 import { calculateCost } from '../shared/utils/cost-calculator.util';
 import { ConfigService } from '@nestjs/config';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
+import { EmbeddingService } from '../shared/services/embedding.service';
 import { UserContextEmbedding } from '../shared/entities/user-context-embedding.entity';
 import { ResumeData } from './entities/resume-data.entity';
 
@@ -54,6 +55,7 @@ export class ResumeBuilderService {
     private dashboardEventService: DashboardEventService,
     private configService: ConfigService,
     private contextIndexerService: ContextIndexerService,
+    private embeddingService: EmbeddingService,
   ) {}
 
   async createConversation(
@@ -70,8 +72,10 @@ export class ResumeBuilderService {
 
     const savedConversation = await this.conversationRepository.save(conversation);
 
-    // Backfill any missing embeddings for this user (resumes + persona)
-    await this.backfillUserEmbeddings(userId);
+    // Backfill any missing embeddings for this user (resumes + persona) — fire-and-forget
+    this.backfillUserEmbeddings(userId).catch((err) =>
+      this.logger.warn('Embedding backfill failed (non-fatal)', err),
+    );
 
     // Check if user has basic info from career profile
     const profile = await this.professionalProfileService.getProfile(userId);
@@ -284,59 +288,89 @@ export class ResumeBuilderService {
       content: msg.content,
     }));
 
-    // Add professional profile context to system prompt
-    let profileContext = '';
+    // Build profile context block from the user's professional profile
+    let profileContextBlock = '';
     try {
       const profile = await this.professionalProfileService.getProfileForGeneration(userId);
-      
-      // Add persona context
-      if (profile.personaData && profile.personaData.currentPersona) {
-        profileContext += `\n\nUser's Current Persona: ${profile.personaData.currentPersona}`;
-        if (profile.personaData.appliedPersona) {
-          profileContext += ' (Applied to resume)';
-        }
-      }
-      
-      // Add basic info context (to avoid asking again)
+      const knownFields: string[] = [];
+
       if (profile.basicInfo) {
-        const basicInfoContext: string[] = [];
-        if (profile.basicInfo.name) basicInfoContext.push(`Name: ${profile.basicInfo.name}`);
-        if (profile.basicInfo.email) basicInfoContext.push(`Email: ${profile.basicInfo.email}`);
-        if (profile.basicInfo.phone) basicInfoContext.push(`Phone: ${profile.basicInfo.phone}`);
-        if (profile.basicInfo.country || profile.basicInfo.state || profile.basicInfo.city) {
-          const location = [profile.basicInfo.city, profile.basicInfo.state, profile.basicInfo.country]
-            .filter(Boolean).join(', ');
-          basicInfoContext.push(`Location: ${location}`);
-        }
-        if (profile.basicInfo.linkedIn) basicInfoContext.push(`LinkedIn: ${profile.basicInfo.linkedIn}`);
-        
-        if (basicInfoContext.length > 0) {
-          profileContext += `\n\nUser's Basic Information (already collected):\n${basicInfoContext.join('\n')}`;
-          profileContext += '\n\nDo NOT ask for this information again - it has already been collected.';
-        }
+        if (profile.basicInfo.name) knownFields.push(`Name: ${profile.basicInfo.name}`);
+        if (profile.basicInfo.email) knownFields.push(`Email: ${profile.basicInfo.email}`);
+        if (profile.basicInfo.phone) knownFields.push(`Phone: ${profile.basicInfo.phone}`);
+        const location = [profile.basicInfo.city, profile.basicInfo.state, profile.basicInfo.country]
+          .filter(Boolean).join(', ');
+        if (location) knownFields.push(`Location: ${location}`);
+        if (profile.basicInfo.linkedIn) knownFields.push(`LinkedIn: ${profile.basicInfo.linkedIn}`);
       }
 
-      // Add target job context
-      if (profile.targetJob && profile.targetJob.targetJobTitle) {
-        profileContext += `\n\nUser's Target Job: ${profile.targetJob.targetJobTitle}`;
-        if (profile.targetJob.careerGoal) {
-          profileContext += `\nCareer Goal: ${profile.targetJob.careerGoal}`;
-        }
+      if (profile.targetJob?.targetJobTitle) {
+        knownFields.push(`Target Job Title: ${profile.targetJob.targetJobTitle}`);
+        if (profile.targetJob.careerGoal) knownFields.push(`Career Goal: ${profile.targetJob.careerGoal}`);
+      }
+
+      if (profile.personaData?.currentPersona) {
+        knownFields.push(`Professional Persona: ${profile.personaData.currentPersona}${profile.personaData.appliedPersona ? ' (applied)' : ''}`);
+      }
+
+      if (profile.persona?.tone) knownFields.push(`Tone: ${profile.persona.tone}`);
+      if (profile.persona?.writingStyle) knownFields.push(`Writing Style: ${profile.persona.writingStyle}`);
+
+      if (knownFields.length > 0) {
+        profileContextBlock = [
+          '\n\n--- KNOWN USER PROFILE (already collected — do NOT ask for any of this again) ---',
+          ...knownFields,
+          '--- END KNOWN USER PROFILE ---',
+        ].join('\n');
       }
     } catch (error) {
       this.logger.warn('Could not load professional profile, continuing without it', error);
     }
 
-    // Add profile context to the last system message or create one
-    const messagesWithContext = profileContext
-      ? [
-          ...chatMessages.slice(0, -1),
-          {
-            ...chatMessages[chatMessages.length - 1],
-            content: chatMessages[chatMessages.length - 1].content + profileContext,
-          },
-        ]
-      : chatMessages;
+    // Semantically search the user's past content for snippets relevant to their latest message.
+    // This surfaces relevant work experience or onboarding details even if mentioned in a
+    // different module (e.g. career profile conversation), making the AI feel intuitive.
+    let semanticContextBlock = '';
+    try {
+      if (this.embeddingService.isEmbeddingsAvailable()) {
+        const latestUserMessage = sendDto.content;
+        const queryEmbedding = await this.embeddingService.generateEmbedding(latestUserMessage);
+        const allEmbeddings = await this.embeddingRepository.find({ where: { userId } });
+
+        if (allEmbeddings.length > 0) {
+          const similar = this.embeddingService.findMostSimilar(
+            queryEmbedding.embedding,
+            allEmbeddings.map((e) => ({ id: e.id, embedding: e.embedding, metadata: { contentType: e.contentType } })),
+            3,    // top 3 snippets
+            0.65, // only high-confidence matches
+          );
+
+          if (similar.length > 0) {
+            const snippets = similar
+              .map((s) => allEmbeddings.find((e) => e.id === s.id)?.content ?? '')
+              .filter(Boolean)
+              .map((c) => c.substring(0, 400));
+
+            if (snippets.length > 0) {
+              semanticContextBlock = '\n\n--- RELEVANT PAST CONTENT (use as reference, do not re-ask) ---\n'
+                + snippets.join('\n---\n')
+                + '\n--- END RELEVANT CONTENT ---';
+            }
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.warn('Semantic context lookup failed (non-fatal)', err);
+    }
+
+    // Prepend a system message that combines the AI role instructions + known profile context
+    // + semantically relevant snippets. This ensures OpenAI always gets the full context and
+    // profile data is authoritative system-level info, not mixed with user input.
+    const systemContent = this.aiChatService.getBaseSystemPrompt() + profileContextBlock + semanticContextBlock;
+    const messagesWithContext: ChatMessage[] = [
+      { role: MessageRole.System, content: systemContent },
+      ...chatMessages,
+    ];
 
     // Get AI response with usage tracking
     let aiResponse: string;
@@ -365,33 +399,9 @@ export class ResumeBuilderService {
       conversation.status = ConversationStatus.Completed;
       await this.conversationRepository.save(conversation);
 
-      // Generate and save resume
+      // Generate and save resume — reuse the messagesWithContext already built above
+      // (system prompt + profile context already prepended)
       try {
-        // Get professional profile for context
-        let profileContext = '';
-        try {
-          const profile = await this.professionalProfileService.getProfileForGeneration(userId);
-          if (profile.persona && Object.keys(profile.persona).length > 0) {
-            profileContext = `\n\nUser's Professional Persona Context:
-- Communication Style: ${profile.persona.communicationStyle || 'Not specified'}
-- Tone: ${profile.persona.tone || 'Not specified'}
-- Professional Voice: ${profile.persona.professionalVoice || 'Not specified'}
-Please use this persona to inform the tone and style of the resume.`;
-          }
-        } catch (error) {
-          this.logger.warn('Could not load professional profile, continuing without it', error);
-        }
-
-        const messagesWithContext = profileContext
-          ? [
-              ...chatMessages.slice(0, -1),
-              {
-                ...chatMessages[chatMessages.length - 1],
-                content: chatMessages[chatMessages.length - 1].content + profileContext,
-              },
-            ]
-          : chatMessages;
-
         await this.generateAndSaveResume(conversationId, userId, messagesWithContext);
       } catch (error) {
         this.logger.error('Error generating resume', error);
@@ -508,8 +518,10 @@ Please use this persona to inform the tone and style of the resume.`;
       existingResume.content = resumeContent;
       existingResume.version += 1;
       const updated = await this.resumeRepository.save(existingResume);
-      // Index resume embedding
-      await this.contextIndexerService.indexResume(updated.id, userId, updated.content);
+      // Index resume embedding — fire-and-forget so a slow/failing API doesn't block the response
+      this.contextIndexerService.indexResume(updated.id, userId, updated.content).catch((err) =>
+        this.logger.warn('Resume re-index failed (non-fatal)', err),
+      );
       
       // Track resume generation
       this.usageTrackingService
@@ -665,7 +677,9 @@ Please use this persona to inform the tone and style of the resume.`;
     } as Partial<Resume>);
 
     const saved = await this.resumeRepository.save(resume);
-    await this.contextIndexerService.indexResume(saved.id, userId, saved.content);
+    this.contextIndexerService.indexResume(saved.id, userId, saved.content).catch((err) =>
+      this.logger.warn('Resume index failed (non-fatal)', err),
+    );
 
     // Mark resume section as complete in professional profile
     try {
@@ -748,11 +762,10 @@ Please use this persona to inform the tone and style of the resume.`;
         const resumeData = await this.resumeDataRepository.findOne({
           where: { resumeId: resume.id },
         });
-        if (resumeData) {
-          await this.contextIndexerService.indexResume(resume.id, userId, resumeData);
-        } else {
-          await this.contextIndexerService.indexResume(resume.id, userId, resume.content);
-        }
+        const content = resumeData ?? resume.content;
+        await this.contextIndexerService.indexResume(resume.id, userId, content).catch((err) =>
+          this.logger.warn(`Backfill resume ${resume.id} failed`, err),
+        );
       }
     }
 
@@ -783,7 +796,7 @@ Please use this persona to inform the tone and style of the resume.`;
         persona: profile.persona,
         personaData: profile.personaData,
         careerGoals: profile.careerGoals,
-      });
+      }).catch((err) => this.logger.warn(`Backfill persona for ${userId} failed`, err));
     }
   }
 }

@@ -1,7 +1,6 @@
 import { Injectable, ExecutionContext } from '@nestjs/common';
 import { ThrottlerGuard, type ThrottlerModuleOptions } from '@nestjs/throttler';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 
 @Injectable()
 export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
@@ -19,14 +18,8 @@ export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // Skip throttling for public routes
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) {
-      return true;
-    }
+    // Public routes are still throttled — they just skip JWT auth, not rate limiting.
+    // This ensures login/register remain protected against brute-force.
     return super.canActivate(context);
   }
 }

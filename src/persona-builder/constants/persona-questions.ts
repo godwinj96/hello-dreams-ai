@@ -139,7 +139,7 @@ export const PERSONA_QUESTIONS: PersonaQuestion[] = [
       {
         id: '5d',
         text: 'Build influence',
-        archetype: PersonaArchetype.Leader,
+        archetype: PersonaArchetype.Collaborator,
       },
     ],
   },

@@ -296,8 +296,24 @@ Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs ma
   private calculateYearsExperience(workExperience: ResumeData['workExperience']): number {
     if (!workExperience || workExperience.length === 0) return 0;
 
-    // Simple calculation - could be improved
-    return workExperience.length * 2; // Rough estimate
+    const now = new Date();
+    let totalMonths = 0;
+
+    for (const job of workExperience) {
+      const start = job.startDate ? new Date(job.startDate) : null;
+      const end = job.endDate ? new Date(job.endDate) : now;
+
+      if (!start || isNaN(start.getTime())) continue;
+      if (isNaN(end.getTime())) continue;
+
+      const months =
+        (end.getFullYear() - start.getFullYear()) * 12 +
+        (end.getMonth() - start.getMonth());
+
+      if (months > 0) totalMonths += months;
+    }
+
+    return Math.round(totalMonths / 12);
   }
 }
 

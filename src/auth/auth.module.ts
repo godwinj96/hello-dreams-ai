@@ -21,9 +21,13 @@ import { AdminModule } from '../admin/admin.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService): JwtModuleOptions => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('JWT_SECRET environment variable is not set');
+        }
         const expiration = configService.get<string>('JWT_EXPIRATION', '15m');
         return {
-          secret: configService.get<string>('JWT_SECRET') || 'default-secret',
+          secret,
           signOptions: {
             expiresIn: expiration,
           },
