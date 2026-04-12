@@ -27,7 +27,6 @@ import { HeadshotGeneration, HeadshotStyle, HeadshotPersonaType } from './entiti
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 import { GenerateHeadshotDto, PERSONA_ALIAS_MAP } from './dto/generate-headshot.dto';
-import { HeadshotPersonaType } from './entities/headshot-generation.entity';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB — matches Supabase headshot-originals bucket limit
