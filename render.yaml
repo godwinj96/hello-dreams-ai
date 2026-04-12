@@ -28,6 +28,46 @@ services:
         fromDatabase:
           name: hello-dreams-ai-db
           property: database
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRATION
+        value: 24h
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ORIGINAL_HEADSHOT_BUCKET
+        value: headshot-originals
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_IMAGE_EDIT_MODEL
+        value: gpt-image-1
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_PLAN_CODE
+        sync: false
+      - key: CREDITS_PER_PAYMENT
+        value: "1000"
+      - key: CREDITS_PER_SUBSCRIPTION
+        value: "10000"
+      - key: NGN_TO_USD_RATE
+        value: "1500"
 
 databases:
   - name: hello-dreams-ai-db

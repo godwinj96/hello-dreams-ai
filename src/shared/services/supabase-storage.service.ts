@@ -12,16 +12,22 @@ export class SupabaseStorageService {
 
   constructor(private configService: ConfigService) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_ANON_KEY');
+    // Prefer service role key for server-side operations (bypasses RLS).
+    // Fall back to anon key if service role key is not configured.
+    const supabaseKey =
+      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY') ||
+      this.configService.get<string>('SUPABASE_ANON_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
       this.logger.warn(
         'Supabase credentials not configured. File storage will not work.',
       );
       this.logger.debug(`SUPABASE_URL: ${supabaseUrl ? 'set' : 'missing'}`);
-      this.logger.debug(`SUPABASE_ANON_KEY: ${supabaseKey ? 'set' : 'missing'}`);
+      this.logger.debug(`SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY: ${supabaseKey ? 'set' : 'missing'}`);
     } else {
-      this.supabase = createClient(supabaseUrl, supabaseKey);
+      this.supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: { persistSession: false },
+      });
       this.bucketName = this.configService.get<string>(
         'SUPABASE_ORIGINAL_HEADSHOT_BUCKET',
         'hello-dreams-files',
