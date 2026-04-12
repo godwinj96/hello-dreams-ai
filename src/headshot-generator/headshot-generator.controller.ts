@@ -10,6 +10,7 @@ import {
   UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
+import { isURL } from 'validator';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +26,8 @@ import { HeadshotGeneratorService } from './headshot-generator.service';
 import { HeadshotGeneration, HeadshotStyle, HeadshotPersonaType } from './entities/headshot-generation.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
-import { GenerateHeadshotDto } from './dto/generate-headshot.dto';
+import { GenerateHeadshotDto, PERSONA_ALIAS_MAP } from './dto/generate-headshot.dto';
+import { HeadshotPersonaType } from './entities/headshot-generation.entity';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB — matches Supabase headshot-originals bucket limit
@@ -324,11 +326,22 @@ If one provider fails, the system automatically tries the next. This ensures hig
     @Request() req,
     @Body() body: GenerateHeadshotDto,
   ): Promise<HeadshotGeneration> {
+    // Accept both canonical and legacy field names from the frontend
+    const originalImageUrl = body.originalImageUrl ?? body.imageId;
+    if (!originalImageUrl || !isURL(originalImageUrl, { require_protocol: true })) {
+      throw new BadRequestException('originalImageUrl must be a valid URL');
+    }
+
+    const rawPersona = body.personaType ?? body.persona;
+    const personaType = rawPersona
+      ? (PERSONA_ALIAS_MAP[rawPersona] ?? rawPersona as HeadshotPersonaType)
+      : undefined;
+
     return this.headshotGeneratorService.generateHeadshots(
       req.user.id,
-      body.originalImageUrl,
+      originalImageUrl,
       body.style,
-      body.personaType,
+      personaType,
     );
   }
 
