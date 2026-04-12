@@ -67,11 +67,18 @@ export class SupabaseStorageService {
         throw new BadRequestException(`Failed to upload file: ${error.message}`);
       }
 
-      const { data: urlData } = this.supabase.storage
+      // Bucket is private — return a signed URL valid for 1 week so the frontend
+      // can display the image and the generation service can download it.
+      const { data: signedData, error: signedError } = await this.supabase.storage
         .from(this.bucketName)
-        .getPublicUrl(fileName);
+        .createSignedUrl(fileName, 7 * 24 * 3600);
 
-      return urlData.publicUrl;
+      if (signedError || !signedData?.signedUrl) {
+        this.logger.error('Error creating signed URL after upload', signedError);
+        throw new BadRequestException(`Failed to create signed URL: ${signedError?.message}`);
+      }
+
+      return signedData.signedUrl;
     } catch (error) {
       this.logger.error('Error in uploadFile', error);
       throw error;
@@ -149,12 +156,18 @@ export class SupabaseStorageService {
 
         // Success!
         this.logger.log(`Successfully uploaded ${fileName} (${fileSizeMB} MB) on attempt ${attempt}`);
-        
-        const { data: urlData } = this.supabase.storage
-          .from(this.bucketName)
-          .getPublicUrl(filePath);
 
-        return urlData.publicUrl;
+        // Bucket is private — return a signed URL valid for 1 week.
+        const { data: signedData, error: signedError } = await this.supabase.storage
+          .from(this.bucketName)
+          .createSignedUrl(filePath, 7 * 24 * 3600);
+
+        if (signedError || !signedData?.signedUrl) {
+          this.logger.error('Error creating signed URL after buffer upload', signedError);
+          throw new BadRequestException(`Failed to create signed URL: ${signedError?.message}`);
+        }
+
+        return signedData.signedUrl;
       } catch (error: any) {
         lastError = error;
         

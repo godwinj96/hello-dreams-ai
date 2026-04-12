@@ -45,7 +45,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_IMAGE_EDIT_MODEL
-        value: gpt-image-1
+        value: dall-e-2
       - key: GEMINI_API_KEY
         sync: false
       - key: HUGGINGFACE_API_KEY

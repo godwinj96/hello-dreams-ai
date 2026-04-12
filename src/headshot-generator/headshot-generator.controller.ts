@@ -28,7 +28,7 @@ import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 import { GenerateHeadshotDto } from './dto/generate-headshot.dto';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB — matches Supabase headshot-originals bucket limit
 
 @ApiTags('headshot-generator')
 @ApiBearerAuth('JWT-auth')
