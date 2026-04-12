@@ -141,7 +141,7 @@ image: [binary file data]
   async uploadImage(
     @Request() req,
     @UploadedFile() file: Express.Multer.File,
-  ): Promise<{ imageUrl: string }> {
+  ): Promise<{ imageUrl: string; imageId: string }> {
     if (!file) {
       throw new BadRequestException('No image file provided');
     }
