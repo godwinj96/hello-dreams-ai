@@ -18,6 +18,7 @@ import { DocumentMessage } from './document-generator/entities/document-message.
 import { Document } from './document-generator/entities/document.entity';
 import { Payment } from './payments/entities/payment.entity';
 import { Subscription } from './payments/entities/subscription.entity';
+import { LinkedInProfile } from './linkedin-optimization/entities/linkedin-profile.entity';
 
 // Load .env from project root
 const envPath = resolve(__dirname, '../.env');
@@ -61,6 +62,7 @@ export const AppDataSource = new DataSource({
     Document,
     Payment,
     Subscription,
+    LinkedInProfile,
   ],
 
   migrations,
