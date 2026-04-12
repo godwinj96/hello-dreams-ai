@@ -30,7 +30,7 @@ export class SupabaseStorageService {
       });
       this.bucketName = this.configService.get<string>(
         'SUPABASE_ORIGINAL_HEADSHOT_BUCKET',
-        'hello-dreams-files',
+        'headshot-originals',
       );
       this.logger.log(`Supabase storage initialized with bucket: ${this.bucketName}`);
     }
