@@ -147,7 +147,8 @@ image: [binary file data]
     }
 
     const imageUrl = await this.headshotGeneratorService.uploadImage(req.user.id, file);
-    return { imageUrl };
+    // Return both `imageUrl` (canonical) and `imageId` (frontend compatibility alias)
+    return { imageUrl, imageId: imageUrl };
   }
 
   @Post('generate')
