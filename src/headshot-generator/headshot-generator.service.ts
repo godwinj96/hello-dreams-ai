@@ -80,6 +80,13 @@ export class HeadshotGeneratorService {
 
         const completed = await this.headshotGenerationRepository.save(saved);
 
+        // Mark headshot section as complete in professional profile
+        try {
+          await this.professionalProfileService.markSectionComplete(userId, 'headshot');
+        } catch (err) {
+          this.logger.warn('Could not mark headshot section as complete', err);
+        }
+
         // Track headshot generation
         this.usageTrackingService
           .trackAction(userId, 'headshots_generated', 'headshot-generator', {

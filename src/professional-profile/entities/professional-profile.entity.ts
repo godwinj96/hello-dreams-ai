@@ -115,6 +115,8 @@ export class ProfessionalProfile {
     resume?: boolean;
     coverLetter?: boolean;
     personalStatement?: boolean;
+    headshot?: boolean;
+    linkedin?: boolean;
   };
 
   @CreateDateColumn()

@@ -53,6 +53,13 @@ export class LinkedInOptimizationService {
 
       const savedProfile = await this.linkedInProfileRepository.save(profile);
 
+      // Mark linkedin section as complete in professional profile
+      try {
+        await this.professionalProfileService.markSectionComplete(userId, 'linkedin');
+      } catch (err) {
+        this.logger.warn('Could not mark linkedin section as complete', err);
+      }
+
       // Track LinkedIn profile generation
       this.usageTrackingService
         .trackAction(userId, 'profile_generated', 'linkedin-optimization')
