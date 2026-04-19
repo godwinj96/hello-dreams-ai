@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -34,7 +35,7 @@ import { UserContextEmbedding } from '../shared/entities/user-context-embedding.
 import { ResumeData } from './entities/resume-data.entity';
 
 @Injectable()
-export class ResumeBuilderService {
+export class ResumeBuilderService implements OnModuleInit {
   private readonly logger = new Logger(ResumeBuilderService.name);
 
   constructor(
@@ -57,6 +58,24 @@ export class ResumeBuilderService {
     private contextIndexerService: ContextIndexerService,
     private embeddingService: EmbeddingService,
   ) {}
+
+  // ── Lifecycle ────────────────────────────────────────────────────────────────
+
+  async onModuleInit(): Promise<void> {
+    // Backfill resume_data for any existing resumes that predate this feature
+    this.backfillResumeData().catch((err) =>
+      this.logger.warn('ResumeData backfill failed (non-fatal)', err),
+    );
+  }
+
+  // ── Public methods ───────────────────────────────────────────────────────────
+
+  async getMyLatestResume(userId: string): Promise<Resume | null> {
+    return this.resumeRepository.findOne({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
 
   async createConversation(
     userId: string,
@@ -522,6 +541,10 @@ Please use this persona to inform the tone and style of the resume.`;
       this.contextIndexerService.indexResume(updated.id, userId, updated.content).catch((err) =>
         this.logger.warn('Resume re-index failed (non-fatal)', err),
       );
+      // Sync resume_data for cross-module access
+      this.extractAndSaveResumeData(updated.id, resumeContent).catch((err) =>
+        this.logger.warn('Resume data sync failed (non-fatal)', err),
+      );
       
       // Track resume generation
       this.usageTrackingService
@@ -680,6 +703,10 @@ Please use this persona to inform the tone and style of the resume.`;
     this.contextIndexerService.indexResume(saved.id, userId, saved.content).catch((err) =>
       this.logger.warn('Resume index failed (non-fatal)', err),
     );
+    // Sync resume_data for cross-module access
+    this.extractAndSaveResumeData(saved.id, resumeContent).catch((err) =>
+      this.logger.warn('Resume data sync failed (non-fatal)', err),
+    );
 
     // Mark resume section as complete in professional profile
     try {
@@ -797,6 +824,97 @@ Please use this persona to inform the tone and style of the resume.`;
         personaData: profile.personaData,
         careerGoals: profile.careerGoals,
       }).catch((err) => this.logger.warn(`Backfill persona for ${userId} failed`, err));
+    }
+  }
+
+  /**
+   * Extract structured fields from a ResumeJson blob and persist them to the
+   * resume_data table so other modules (LinkedIn, cover letter) can query them.
+   */
+  private async extractAndSaveResumeData(
+    resumeId: string,
+    content: ResumeJson,
+  ): Promise<void> {
+    const existing = await this.resumeDataRepository.findOne({ where: { resumeId } });
+    const entity = existing ?? this.resumeDataRepository.create({ resumeId });
+
+    const contact = content.contact ?? {};
+    const links = contact.links ?? {};
+
+    entity.contactInfo = {
+      fullName: contact.fullName,
+      email: contact.email,
+      phone: contact.phone,
+      location: contact.location,
+      linkedIn: links.linkedIn,
+      github: links.github,
+      portfolio: links.portfolio,
+    };
+    entity.workExperience = (content.workExperience ?? []).map((job) => ({
+      jobTitle: job.jobTitle,
+      company: job.company,
+      location: job.location,
+      startDate: job.startDate ?? '',
+      endDate: job.endDate,
+      responsibilities: job.responsibilities ?? [],
+      achievements: job.achievements ?? [],
+      tools: job.tools ?? [],
+    }));
+    entity.education = content.education ?? [];
+    entity.skills = {
+      technical: [
+        ...(content.skills?.technical ?? []),
+        ...(content.skills?.core ?? []),
+      ],
+      soft: content.skills?.soft ?? [],
+      tools: content.skills?.tools ?? [],
+    };
+    entity.certifications = (content.certifications ?? []).map((c) => ({
+      name: c.name,
+      issuingOrganization: c.issuingOrganization,
+      date: c.date,
+    }));
+    entity.projects = (content.projects ?? []).map((p) => ({
+      name: p.name,
+      description: p.description,
+      technologies: p.technologies ?? [],
+    }));
+    entity.achievements = (content.achievements ?? []).map((a) => ({
+      title: a.title,
+      description: a.description,
+      date: a.date,
+    }));
+    entity.summary = content.summary ?? '';
+    entity.languages = (content.skills?.languages ?? []).map((lang) => ({
+      language: lang,
+      proficiency: '',
+    }));
+
+    await this.resumeDataRepository.save(entity);
+  }
+
+  /**
+   * One-time backfill: populate resume_data for any existing resumes that have
+   * none. Safe to call on every startup — only processes records with no match.
+   */
+  private async backfillResumeData(): Promise<void> {
+    const allResumes = await this.resumeRepository.find({
+      select: ['id', 'content'],
+    });
+
+    let count = 0;
+    for (const resume of allResumes) {
+      const exists = await this.resumeDataRepository.findOne({
+        where: { resumeId: resume.id },
+      });
+      if (!exists && resume.content) {
+        await this.extractAndSaveResumeData(resume.id, resume.content as ResumeJson);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      this.logger.log(`Backfilled resume_data for ${count} existing resume(s)`);
     }
   }
 }

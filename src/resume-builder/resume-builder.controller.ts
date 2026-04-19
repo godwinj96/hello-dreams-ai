@@ -82,6 +82,14 @@ export class ResumeBuilderController {
     return this.resumeBuilderService.findAllConversations(req.user.id, pagination);
   }
 
+  @Get('latest-resume')
+  @ApiOperation({ summary: 'Get the latest generated resume for the current user' })
+  @ApiResponse({ status: 200, description: 'Latest resume or null', type: ResumeResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getLatestResume(@Request() req): Promise<ResumeResponseDto | null> {
+    return this.resumeBuilderService.getMyLatestResume(req.user.id);
+  }
+
   @Get('conversations/:id')
   @ApiOperation({
     summary: 'Get a specific resume conversation by ID',
