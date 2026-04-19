@@ -8,10 +8,10 @@ export const ThrottleAIGeneration = () =>
   applyDecorators(Throttle({ default: { limit: 10, ttl: 3600000 } }));
 
 /**
- * Decorator for chat/message endpoints (30 requests/hour)
+ * Decorator for chat/message endpoints (20 requests/minute)
  */
 export const ThrottleChat = () =>
-  applyDecorators(Throttle({ default: { limit: 30, ttl: 3600000 } }));
+  applyDecorators(Throttle({ default: { limit: 20, ttl: 60000 } }));
 
 
 
