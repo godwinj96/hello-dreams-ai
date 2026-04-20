@@ -58,10 +58,10 @@ export class DocumentConversation {
   )
   messages: any[];
 
-  @Column({ type: 'jsonb', default: [] })
+  @Column({ type: 'jsonb', default: [], name: 'messages_jsonb' })
   messagesJsonb: Array<{ role: string; content: string }>;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ type: 'int', default: 0, name: 'token_count' })
   tokenCount: number;
 
   @CreateDateColumn()
