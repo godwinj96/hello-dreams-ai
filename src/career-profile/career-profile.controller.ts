@@ -37,6 +37,7 @@ import { UploadCvResponseDto } from './dto/upload-cv.dto';
 import { VoiceMessageResponseDto } from './dto/voice-message.dto';
 import { CareerProfileConfirmationDto } from './dto/confirmation.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreditGuard } from '../common/guards/credit.guard';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('career-profile')
@@ -119,6 +120,7 @@ export class CareerProfileController {
   }
 
   @Post('conversations/:id/messages')
+  @UseGuards(CreditGuard)
   @ApiOperation({
     summary: 'Send a message in a career profile conversation',
     description:
@@ -248,6 +250,7 @@ file: [binary file data - PDF or DOCX]
   }
 
   @Post('conversations/:id/voice-message')
+  @UseGuards(CreditGuard)
   @UseInterceptors(FileInterceptor('audio'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

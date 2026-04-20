@@ -57,6 +57,12 @@ export class ResumeConversation {
   )
   resume: any;
 
+  @Column({ type: 'jsonb', default: [] })
+  messagesJsonb: Array<{ role: string; content: string }>;
+
+  @Column({ type: 'int', default: 0 })
+  tokenCount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

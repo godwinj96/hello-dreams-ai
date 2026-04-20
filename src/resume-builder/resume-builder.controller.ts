@@ -38,6 +38,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateResumeDto, PatchResumeDto } from './dto/update-resume.dto';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 import { ThrottleAIGeneration, ThrottleChat } from '../common/decorators/throttle-ai.decorator';
+import { CreditGuard } from '../common/guards/credit.guard';
 
 @ApiTags('resume-builder')
 @ApiBearerAuth('JWT-auth')
@@ -152,6 +153,7 @@ export class ResumeBuilderController {
 
   @Post('conversations/:id/messages')
   @ThrottleChat()
+  @UseGuards(CreditGuard)
   @ApiOperation({
     summary: 'Send a message in a resume conversation',
     description:
@@ -189,6 +191,7 @@ export class ResumeBuilderController {
 
   @Post('conversations/:id/generate')
   @ThrottleAIGeneration()
+  @UseGuards(CreditGuard)
   @ApiOperation({ summary: 'Generate or regenerate a resume from conversation' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
   @ApiResponse({ status: 201, description: 'Resume generated successfully', type: ResumeResponseDto })

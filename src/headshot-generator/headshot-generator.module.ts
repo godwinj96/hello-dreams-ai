@@ -8,6 +8,7 @@ import { HeadshotGeneration } from './entities/headshot-generation.entity';
 import { SharedModule } from '../shared/shared.module';
 import { ProfessionalProfileModule } from '../professional-profile/professional-profile.module';
 import { AdminModule } from '../admin/admin.module';
+import { CreditsModule } from '../credits/credits.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AdminModule } from '../admin/admin.module';
     SharedModule,
     ProfessionalProfileModule,
     AdminModule,
+    CreditsModule,
   ],
   controllers: [HeadshotGeneratorController],
   providers: [

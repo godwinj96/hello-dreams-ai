@@ -20,6 +20,7 @@ import {
 import { LinkedInOptimizationService } from './linkedin-optimization.service';
 import { LinkedInProfile } from './entities/linkedin-profile.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreditGuard } from '../common/guards/credit.guard';
 import { HttpCode, HttpStatus } from '@nestjs/common';
 
 @ApiTags('linkedin-optimization')
@@ -32,6 +33,7 @@ export class LinkedInOptimizationController {
   ) {}
 
   @Post('generate')
+  @UseGuards(CreditGuard)
   @ApiOperation({
     summary: 'Generate LinkedIn profile from resume data',
     description: `**Generate LinkedIn Profile**

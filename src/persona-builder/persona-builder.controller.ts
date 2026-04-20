@@ -17,6 +17,7 @@ import { PersonaBuilderService } from './persona-builder.service';
 import { SubmitAnswersDto } from './dto/submit-answers.dto';
 import { PersonaResponseDto, QuestionDto } from './dto/persona-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreditGuard } from '../common/guards/credit.guard';
 
 @ApiTags('persona-builder')
 @ApiBearerAuth('JWT-auth')
@@ -53,6 +54,7 @@ export class PersonaBuilderController {
   }
 
   @Post('generate')
+  @UseGuards(CreditGuard)
   @ApiOperation({ summary: 'Generate professional persona from submitted answers' })
   @ApiResponse({ status: 201, description: 'Persona generated successfully', type: PersonaResponseDto })
   @ApiResponse({ status: 400, description: 'No answers found' })

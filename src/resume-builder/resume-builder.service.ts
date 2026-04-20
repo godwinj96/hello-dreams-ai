@@ -271,7 +271,6 @@ export class ResumeBuilderService implements OnModuleInit {
   ): Promise<ResumeMessageResponseDto> {
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId },
-      relations: ['messages'],
     });
 
     if (!conversation) {
@@ -295,17 +294,8 @@ export class ResumeBuilderService implements OnModuleInit {
       sendDto.content,
     );
 
-    // Get conversation history for context
-    const messages = await this.messageRepository.find({
-      where: { conversationId },
-      order: { createdAt: 'ASC' },
-    });
-
-    // Convert to ChatMessage format for AI service
-    const chatMessages: ChatMessage[] = messages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    // Get conversation history from JSONB column (single query, no join)
+    const chatMessages: ChatMessage[] = (conversation.messagesJsonb ?? []) as ChatMessage[];
 
     // Build profile context block from the user's professional profile
     let profileContextBlock = '';
@@ -614,7 +604,18 @@ Please use this persona to inform the tone and style of the resume.`;
       content,
     } as Partial<ResumeMessage>);
 
-    return await this.messageRepository.save(message);
+    const saved = await this.messageRepository.save(message);
+
+    // Append to JSONB column atomically (audit log rows are preserved)
+    await this.conversationRepository.query(
+      `UPDATE "resume_conversations"
+       SET "messages_jsonb" = "messages_jsonb" || $1::jsonb,
+           "updatedAt" = now()
+       WHERE id = $2`,
+      [JSON.stringify([{ role, content }]), conversationId],
+    );
+
+    return saved;
   }
 
   async updateResume(

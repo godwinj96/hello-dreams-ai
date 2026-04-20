@@ -32,6 +32,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateDocumentDto, PatchDocumentDto } from './dto/update-document.dto';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 import { ThrottleAIGeneration, ThrottleChat } from '../common/decorators/throttle-ai.decorator';
+import { CreditGuard } from '../common/guards/credit.guard';
 
 @ApiTags('document-generator')
 @ApiBearerAuth('JWT-auth')
@@ -100,6 +101,7 @@ export class DocumentGeneratorController {
 
   @Post('conversations/:id/messages')
   @ThrottleChat()
+  @UseGuards(CreditGuard)
   @ApiOperation({
     summary: 'Send a message in a document conversation',
     description:
@@ -137,6 +139,7 @@ export class DocumentGeneratorController {
 
   @Post('conversations/:id/generate')
   @ThrottleAIGeneration()
+  @UseGuards(CreditGuard)
   @ApiOperation({
     summary: 'Generate or regenerate a document from conversation',
     description:

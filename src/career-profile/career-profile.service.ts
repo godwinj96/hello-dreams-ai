@@ -167,7 +167,6 @@ export class CareerProfileService {
   ): Promise<CareerMessageResponseDto> {
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId },
-      relations: ['messages'],
     });
 
     if (!conversation) {
@@ -191,17 +190,8 @@ export class CareerProfileService {
       sendDto.content,
     );
 
-    // Get conversation history for context
-    const messages = await this.messageRepository.find({
-      where: { conversationId },
-      order: { createdAt: 'ASC' },
-    });
-
-    // Convert to ChatMessage format for AI service
-    const chatMessages: ChatMessage[] = messages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    // Get conversation history from JSONB column (single query, no join)
+    const chatMessages: ChatMessage[] = (conversation.messagesJsonb ?? []) as ChatMessage[];
 
     // Load existing profile so the AI skips questions already answered
     const existingProfile = await this.professionalProfileService.getProfile(userId);
@@ -483,7 +473,18 @@ export class CareerProfileService {
       content,
     } as Partial<CareerMessage>);
 
-    return await this.messageRepository.save(message);
+    const saved = await this.messageRepository.save(message);
+
+    // Append to JSONB column atomically (audit log rows are preserved)
+    await this.conversationRepository.query(
+      `UPDATE "career_conversations"
+       SET "messages_jsonb" = "messages_jsonb" || $1::jsonb,
+           "updatedAt" = now()
+       WHERE id = $2`,
+      [JSON.stringify([{ role, content }]), conversationId],
+    );
+
+    return saved;
   }
 
   private getCareerProfileSystemPrompt(existingProfile?: any): string {

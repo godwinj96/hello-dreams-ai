@@ -13,6 +13,7 @@ import { ResumeBuilderModule } from '../resume-builder/resume-builder.module';
 import { ProfessionalProfileModule } from '../professional-profile/professional-profile.module';
 import { SharedModule } from '../shared/shared.module';
 import { AdminModule } from '../admin/admin.module';
+import { CreditsModule } from '../credits/credits.module';
 import { ResumeData } from '../resume-builder/entities/resume-data.entity';
 import { Resume } from '../resume-builder/entities/resume.entity';
 import { UserContextService } from './services/user-context.service';
@@ -32,6 +33,7 @@ import { UserContextEmbedding } from '../shared/entities/user-context-embedding.
     ProfessionalProfileModule,
     SharedModule,
     AdminModule,
+    CreditsModule,
   ],
   controllers: [DocumentGeneratorController],
   providers: [

@@ -7,12 +7,14 @@ import { PersonaScoringService } from './services/persona-scoring.service';
 import { PersonaContentService } from './services/persona-content.service';
 import { ProfessionalProfileModule } from '../professional-profile/professional-profile.module';
 import { AdminModule } from '../admin/admin.module';
+import { CreditsModule } from '../credits/credits.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([PersonaAnswer]),
     ProfessionalProfileModule,
     AdminModule,
+    CreditsModule,
   ],
   controllers: [PersonaBuilderController],
   providers: [

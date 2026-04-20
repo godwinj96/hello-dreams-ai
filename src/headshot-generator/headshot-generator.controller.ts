@@ -25,6 +25,7 @@ import { memoryStorage } from 'multer';
 import { HeadshotGeneratorService } from './headshot-generator.service';
 import { HeadshotGeneration, HeadshotStyle, HeadshotPersonaType } from './entities/headshot-generation.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreditGuard } from '../common/guards/credit.guard';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 import { GenerateHeadshotDto, PERSONA_ALIAS_MAP } from './dto/generate-headshot.dto';
 
@@ -153,6 +154,7 @@ image: [binary file data]
   }
 
   @Post('generate')
+  @UseGuards(CreditGuard)
   @ApiOperation({
     summary: 'Generate professional headshots',
     description: `**Step 2 of 3: Generate Professional Headshots**

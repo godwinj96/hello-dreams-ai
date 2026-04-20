@@ -11,6 +11,7 @@ import { ResumeBuilderModule } from '../resume-builder/resume-builder.module';
 import { ProfessionalProfileModule } from '../professional-profile/professional-profile.module';
 import { SharedModule } from '../shared/shared.module';
 import { AdminModule } from '../admin/admin.module';
+import { CreditsModule } from '../credits/credits.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { AdminModule } from '../admin/admin.module';
     ProfessionalProfileModule,
     SharedModule,
     AdminModule,
+    CreditsModule,
   ],
   controllers: [CareerProfileController],
   providers: [

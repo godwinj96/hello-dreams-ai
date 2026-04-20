@@ -38,6 +38,7 @@ import { LinkedInOptimizationModule } from './linkedin-optimization/linkedin-opt
 import { HeadshotGeneratorModule } from './headshot-generator/headshot-generator.module';
 import { AdminModule } from './admin/admin.module';
 import { SharedModule } from './shared/shared.module';
+import { CreditsModule } from './credits/credits.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @Module({
@@ -133,6 +134,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     AdminModule,
     SharedModule,
     PaymentsModule,
+    CreditsModule,
   ],
   controllers: [AppController],
   providers: [
