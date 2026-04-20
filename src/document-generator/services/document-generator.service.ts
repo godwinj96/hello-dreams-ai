@@ -15,6 +15,12 @@ export interface StructuredDocumentJson {
     targetCompany?: string;
     jobDescriptionSummary?: string;
     tone?: string;
+    sender?: {
+      name?: string;
+      email?: string;
+      phone?: string;
+      location?: string;
+    };
   };
   sections: Array<{
     heading: string;
@@ -51,9 +57,11 @@ export class DocumentGeneratorService {
     jobDescription?: string,
   ): Promise<StructuredDocumentJson> {
     try {
-      // For cover letters, use the new structured generator
+      // For cover letters, use the structured sections generator to avoid
+      // embedding header/footer in the paragraph text (which causes duplicates
+      // when the frontend template also renders the sender block and signature).
       if (documentType === DocumentType.CoverLetter) {
-        const text = await this.coverLetterGenerator.generateCoverLetter(
+        const coverSections = await this.coverLetterGenerator.generateCoverLetterSections(
           userId,
           jobDescription,
           targetJobTitle,
@@ -62,12 +70,24 @@ export class DocumentGeneratorService {
         return {
           documentType,
           meta: {
-            targetRole: targetJobTitle,
-            targetCompany,
+            targetRole: targetJobTitle || coverSections.companyAddress.companyName,
+            targetCompany: targetCompany || coverSections.companyAddress.companyName,
             jobDescriptionSummary: jobDescription?.slice(0, 140),
+            sender: {
+              name: coverSections.header.name,
+              email: coverSections.header.email,
+              phone: coverSections.header.phone,
+              location: coverSections.header.location,
+            },
           },
-          sections: [{ heading: 'Cover Letter', paragraphs: [text] }],
-          closing: {},
+          sections: [
+            { heading: 'Opening', paragraphs: [coverSections.opening] },
+            { heading: 'Core', paragraphs: [coverSections.core] },
+            { heading: 'Skills', paragraphs: [coverSections.skillsMatch] },
+            { heading: 'Cultural Fit', paragraphs: [coverSections.culturalFit] },
+            { heading: 'Closing', paragraphs: [coverSections.closing] },
+          ],
+          closing: { signoff: 'Warm regards', signature: coverSections.signature },
         };
       }
 

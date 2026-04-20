@@ -49,7 +49,8 @@ export class CoverLetterGeneratorService {
   ) {}
 
   /**
-   * Generate cover letter with 7-section structure
+   * Generate cover letter with 7-section structure (returns plain-text string).
+   * @deprecated Use generateCoverLetterSections() for structured output.
    */
   async generateCoverLetter(
     userId: string,
@@ -57,6 +58,26 @@ export class CoverLetterGeneratorService {
     targetJobTitle?: string,
     targetCompany?: string,
   ): Promise<string> {
+    try {
+      const sections = await this.generateCoverLetterSections(userId, jobDescription, targetJobTitle, targetCompany);
+      return this.formatCoverLetter(sections);
+    } catch (error) {
+      this.logger.error('Error generating cover letter', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate cover letter sections as a structured object.
+   * Use this in place of generateCoverLetter() when building StructuredDocumentJson
+   * so the frontend can render each part independently without duplication.
+   */
+  async generateCoverLetterSections(
+    userId: string,
+    jobDescription?: string,
+    targetJobTitle?: string,
+    targetCompany?: string,
+  ): Promise<CoverLetterSections> {
     try {
       // Parse job description if provided (sanitize first)
       let parsedJobDescription: ParsedJobDescription | null = null;
@@ -82,8 +103,6 @@ export class CoverLetterGeneratorService {
       const basicInfo = profile?.basicInfo ?? {};
 
       // Semantically extract the best-matched skills and experience from ALL past content
-      // (resumes + career profile conversations) using the job description as the query.
-      // Falls back to empty arrays gracefully if embeddings are unavailable.
       const [semanticSkills, semanticExperience] = jobDescription
         ? await Promise.all([
             this.userContextService.extractRelevantSkills(userId, jobDescription),
@@ -91,8 +110,7 @@ export class CoverLetterGeneratorService {
           ])
         : [[], []];
 
-      // Generate sections with comprehensive context
-      const sections = await this.generateSections(
+      return this.generateSections(
         resumeData,
         parsedJobDescription,
         targetJobTitle || parsedJobDescription?.jobTitle,
@@ -103,11 +121,8 @@ export class CoverLetterGeneratorService {
         semanticSkills,
         semanticExperience,
       );
-
-      // Format into complete cover letter
-      return this.formatCoverLetter(sections);
     } catch (error) {
-      this.logger.error('Error generating cover letter', error);
+      this.logger.error('Error generating cover letter sections', error);
       throw error;
     }
   }
