@@ -50,6 +50,18 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   CORS_ORIGIN: string;
+
+  @IsOptional()
+  @IsString()
+  SERPAPI_API_KEY: string;
+
+  @IsOptional()
+  @IsString()
+  JSEARCH_RAPIDAPI_KEY: string;
+
+  @IsOptional()
+  @IsString()
+  CAREERJET_API_KEY: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

@@ -5,7 +5,19 @@
       "Bash(npx skills:*)",
       "Read(//c/Users/BBPC/Documents/Projects/hello-dreams-ai/src/**)",
       "Read(//c/Users/BBPC/Documents/Projects/hello-dreams-ai/**)",
-      "Bash(find C:\\\\Users\\\\BBPC\\\\Documents\\\\Projects\\\\hello-dreams-ai-frontend\\\\hello-dreams-ai\\\\src:*)"
+      "Bash(find C:\\\\Users\\\\BBPC\\\\Documents\\\\Projects\\\\hello-dreams-ai-frontend\\\\hello-dreams-ai\\\\src:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__supabase__list_storage_buckets",
+      "mcp__supabase__get_logs",
+      "WebSearch",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__list_tables"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }

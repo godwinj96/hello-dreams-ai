@@ -26,6 +26,8 @@ import { UsageTracking } from './admin/entities/usage-tracking.entity';
 import { Payment } from './payments/entities/payment.entity';
 import { Subscription } from './payments/entities/subscription.entity';
 import { UserContextEmbedding } from './shared/entities/user-context-embedding.entity';
+import { JobListing } from './job-application/entities/job-listing.entity';
+import { JobApplication } from './job-application/entities/job-application.entity';
 import { AuthModule } from './auth/auth.module';
 import { PaymentsModule } from './payments/payments.module';
 import { UsersModule } from './users/users.module';
@@ -39,6 +41,7 @@ import { HeadshotGeneratorModule } from './headshot-generator/headshot-generator
 import { AdminModule } from './admin/admin.module';
 import { SharedModule } from './shared/shared.module';
 import { CreditsModule } from './credits/credits.module';
+import { JobApplicationModule } from './job-application/job-application.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @Module({
@@ -84,6 +87,8 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
               Payment,
               Subscription,
               UserContextEmbedding,
+              JobListing,
+              JobApplication,
             ],
             synchronize: false,
           };
@@ -115,6 +120,8 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
               Payment,
               Subscription,
               UserContextEmbedding,
+              JobListing,
+              JobApplication,
             ],
             synchronize: false,
           };
@@ -135,6 +142,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     SharedModule,
     PaymentsModule,
     CreditsModule,
+    JobApplicationModule,
   ],
   controllers: [AppController],
   providers: [

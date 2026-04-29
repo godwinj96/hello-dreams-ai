@@ -55,6 +55,27 @@ export class JobListing {
   @Column({ type: 'jsonb', nullable: true })
   rawData: Record<string, any>;
 
+  @Column({ type: 'boolean', default: false })
+  isRemote: boolean;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  country: string; // ISO-2: 'NG','GH','KE','ZA', null = global
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  atsType: string; // 'greenhouse' | 'lever' | null
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  atsBoardToken: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  atsJobId: string;
+
+  @Column({ type: 'text', nullable: true })
+  applicationUrl: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  cachedAt: Date;
+
   @OneToMany(() => JobApplication, (application) => application.jobListing)
   applications: JobApplication[];
 

@@ -345,6 +345,20 @@ audio: [binary audio file data - MP3, WAV, etc.]
     return this.careerProfileService.sendVoiceMessage(conversationId, req.user.id, audioFile);
   }
 
+  @Post('conversations/:id/complete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Mark career profile conversation as complete' })
+  @ApiParam({ name: 'id', description: 'Conversation ID' })
+  @ApiResponse({ status: 204, description: 'Career profile marked as complete' })
+  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async completeConversation(
+    @Param('id', UUIDValidationPipe) id: string,
+    @Request() req,
+  ): Promise<void> {
+    return this.careerProfileService.completeConversation(id, req.user.id);
+  }
+
   @Get('conversations/:id/confirmation')
   @ApiOperation({ summary: 'Get confirmation summary of collected data' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })

@@ -40,8 +40,10 @@ export class ProfileSummaryResponseDto {
   @ApiProperty({ description: 'Conversation ID', example: 'uuid' })
   conversationId: string;
 
-  @ApiProperty({ description: 'Extracted profile summary', example: { careerGoals: {}, extractedData: {} } })
+  @ApiProperty({ description: 'Extracted profile summary' })
   summary: {
+    basicInfo?: any;
+    targetJob?: any;
     careerGoals?: any;
     extractedData?: any;
   };

@@ -190,8 +190,12 @@ export class CareerProfileService {
       sendDto.content,
     );
 
-    // Get conversation history from JSONB column (single query, no join)
-    const chatMessages: ChatMessage[] = (conversation.messagesJsonb ?? []) as ChatMessage[];
+    // Get conversation history from JSONB column and append the current user message
+    // so the AI and extraction both see the full context including what was just sent.
+    const chatMessages: ChatMessage[] = [
+      ...(conversation.messagesJsonb ?? []) as ChatMessage[],
+      { role: MessageRole.User, content: sendDto.content },
+    ];
 
     // Load existing profile so the AI skips questions already answered
     const existingProfile = await this.professionalProfileService.getProfile(userId);
@@ -390,9 +394,13 @@ export class CareerProfileService {
         targetJobTitle: 'target job title or position',
         careerGoal: 'career goal (promotion, career switch, new field, etc.)',
         salaryExpectation: 'salary range expectation',
+        workExperience: 'brief summary of work experience and years in field',
+        education: 'highest education level and field of study',
+        skills: 'comma-separated list of professional skills',
+        background: 'overall professional background summary',
       };
 
-      const systemPrompt = `Extract structured information from the user's responses. Return a JSON object with the fields: name, email, phone, country, state, city, linkedIn, targetJobTitle, careerGoal, salaryExpectation. Only include fields that are clearly mentioned.`;
+      const systemPrompt = `Extract structured information from the user's responses. Return a JSON object with only the fields that are clearly mentioned: name, email, phone, country, state, city, linkedIn, targetJobTitle, careerGoal, salaryExpectation, workExperience, education, skills (comma-separated), background. Omit any field not clearly stated.`;
 
       const extracted = await this.openAIService.extractStructuredData(
         conversationText,
@@ -420,6 +428,18 @@ export class CareerProfileService {
             targetJobTitle: extracted.targetJobTitle,
             careerGoal: extracted.careerGoal,
             salaryExpectation: extracted.salaryExpectation,
+          });
+        }
+
+        // Update extracted background data (feeds progress tracker and downstream AI)
+        if (extracted.workExperience || extracted.education || extracted.skills || extracted.background) {
+          await this.professionalProfileService.updateExtractedData(userId, {
+            background: extracted.background,
+            experience: extracted.workExperience,
+            education: extracted.education,
+            skills: extracted.skills
+              ? extracted.skills.split(',').map((s: string) => s.trim()).filter(Boolean)
+              : undefined,
           });
         }
       }
@@ -453,13 +473,25 @@ export class CareerProfileService {
     // Get professional profile
     const profile = await this.professionalProfileService.getProfileForGeneration(userId);
 
+    // Mark the career profile section as complete — user has generated their summary
+    await this.professionalProfileService.markSectionComplete(userId, 'careerProfile');
+
     return {
       conversationId,
       summary: {
+        basicInfo: profile.basicInfo,
+        targetJob: profile.targetJob,
         careerGoals: profile.careerGoals,
         extractedData: profile.extractedData,
       },
     };
+  }
+
+  async completeConversation(conversationId: string, userId: string): Promise<void> {
+    const conversation = await this.conversationRepository.findOne({ where: { id: conversationId } });
+    if (!conversation) throw new NotFoundException(`Conversation ${conversationId} not found`);
+    if (conversation.userId !== userId) throw new ForbiddenException('Access denied');
+    await this.professionalProfileService.markSectionComplete(userId, 'careerProfile');
   }
 
   private async addMessage(
@@ -555,7 +587,13 @@ Be conversational and encouraging. Focus on understanding:
 
 If a piece of information is already listed in the ALREADY COLLECTED section above, acknowledge it naturally ("I can see you're targeting [role]...") and move on to gather new information. Never ask the user to repeat something already collected.
 
-Be warm, supportive, and help them think deeply about their career journey.`;
+Be warm, supportive, and help them think deeply about their career journey.
+
+Once you have collected enough information across these areas — contact details, target role, career goals, work experience, education, and key skills — end your message with exactly this line on its own paragraph:
+
+✅ I have enough to build your career profile. Click **"Generate Profile Summary"** below when you're ready.
+
+Only add this line once, when you genuinely have sufficient information to build a meaningful profile. Do not add it prematurely.`;
   }
 
   private mapConversationToDto(

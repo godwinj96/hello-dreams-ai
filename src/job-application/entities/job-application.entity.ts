@@ -57,6 +57,18 @@ export class JobApplication {
   @Column({ type: 'text', nullable: true })
   notes: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  atsApplicationId: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  atsSubmittedAt: Date;
+
+  @Column({ type: 'jsonb', nullable: true })
+  generatedResumeContent: Record<string, any>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  generatedCoverLetterContent: Record<string, any>;
+
   @CreateDateColumn()
   createdAt: Date;
 
