@@ -438,7 +438,9 @@ export class CareerProfileService {
             experience: extracted.workExperience,
             education: extracted.education,
             skills: extracted.skills
-              ? extracted.skills.split(',').map((s: string) => s.trim()).filter(Boolean)
+              ? (Array.isArray(extracted.skills)
+                  ? extracted.skills.map((s: any) => String(s).trim()).filter(Boolean)
+                  : String(extracted.skills).split(',').map((s: string) => s.trim()).filter(Boolean))
               : undefined,
           });
         }
