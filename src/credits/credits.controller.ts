@@ -5,7 +5,7 @@ import { CreditsService, CreditStatus } from './credits.service';
 
 @ApiTags('credits')
 @ApiBearerAuth('JWT-auth')
-@Controller('users')
+@Controller('credits')
 @UseGuards(JwtAuthGuard)
 export class CreditsController {
   constructor(private readonly creditsService: CreditsService) {}
