@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { UsageTracking } from '../entities/usage-tracking.entity';
-import { DashboardStatsDto, UserMetricsDto, FeatureUsageDto, ActivityMetricsDto } from '../dto/dashboard-stats.dto';
+import {
+  DashboardStatsDto,
+  UserMetricsDto,
+  FeatureUsageDto,
+  ActivityMetricsDto,
+  CostMetricsDto,
+  RegistrationTrendPointDto,
+} from '../dto/dashboard-stats.dto';
 import { TimeRangeDto, TimeRange } from '../dto/time-range.dto';
 import { UsageMetricsDto } from '../dto/usage-metrics.dto';
 import { UsageTrackingService } from './usage-tracking.service';
@@ -54,34 +61,34 @@ export class DashboardService {
     const range = timeRange || { timeRange: TimeRange.Week };
     const { startDate, endDate } = this.getDateRange(range);
 
-    // Get user metrics
-    const userMetrics = await this.getUserMetrics(startDate, endDate);
-
-    // Get feature usage
-    const featureUsage = await this.getFeatureUsage(startDate, endDate);
-
-    // Get usage metrics
-    const usageMetrics = await this.usageTrackingService.getAggregatedStats(
-      startDate,
-      endDate,
-    );
-
-    // Get activity metrics
-    const activityMetrics = await this.getActivityMetrics();
+    const [
+      userMetrics,
+      featureUsage,
+      usageMetrics,
+      activityMetrics,
+      costMetrics,
+      registrationTrend,
+    ] = await Promise.all([
+      this.getUserMetrics(),
+      this.getFeatureUsage(startDate, endDate),
+      this.usageTrackingService.getAggregatedStats(startDate, endDate),
+      this.getActivityMetrics(),
+      this.getCostMetrics(startDate, endDate),
+      this.getRegistrationTrend(startDate, endDate),
+    ]);
 
     return {
       userMetrics,
       featureUsage,
       usageMetrics: usageMetrics as UsageMetricsDto,
       activityMetrics,
+      costMetrics,
+      registrationTrend,
       generatedAt: new Date(),
     };
   }
 
-  private async getUserMetrics(
-    startDate: Date,
-    endDate: Date,
-  ): Promise<UserMetricsDto> {
+  private async getUserMetrics(): Promise<UserMetricsDto> {
     const [
       totalUsers,
       activeUsers,
@@ -94,7 +101,7 @@ export class DashboardService {
       this.usersRepository.count(),
       this.usersRepository.count({ where: { isActive: true } }),
       this.usersRepository.count({ where: { isActive: false } }),
-      this.usersRepository.find(),
+      this.usersRepository.find({ select: ['role'] }),
       this.usersRepository
         .createQueryBuilder('user')
         .where('user.createdAt >= :date', {
@@ -145,6 +152,7 @@ export class DashboardService {
       'persona-builder',
       'linkedin-optimization',
       'headshot-generator',
+      'job-application',
     ];
 
     const usage = await Promise.all(
@@ -152,7 +160,7 @@ export class DashboardService {
         this.usageTrackingRepository.count({
           where: {
             module,
-            createdAt: MoreThanOrEqual(startDate),
+            createdAt: Between(startDate, endDate),
           },
         }),
       ),
@@ -165,7 +173,52 @@ export class DashboardService {
       personaBuilder: usage[3],
       linkedinOptimization: usage[4],
       headshotGenerator: usage[5],
+      jobApplication: usage[6],
     };
+  }
+
+  private async getCostMetrics(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<CostMetricsDto> {
+    const result = await this.usageTrackingRepository
+      .createQueryBuilder('usage')
+      .select('COALESCE(SUM(usage.tokensUsed), 0)', 'totalTokensUsed')
+      .addSelect('COALESCE(SUM(usage.costUsd), 0)', 'totalCostUsd')
+      .addSelect('COALESCE(SUM(usage.costNgn), 0)', 'totalCostNgn')
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
+      .getRawOne();
+
+    return {
+      totalTokensUsed: Number(result?.totalTokensUsed || 0),
+      totalCostUsd: Math.round(Number(result?.totalCostUsd || 0) * 1_000_000) / 1_000_000,
+      totalCostNgn: Math.round(Number(result?.totalCostNgn || 0) * 100) / 100,
+    };
+  }
+
+  private async getRegistrationTrend(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<RegistrationTrendPointDto[]> {
+    const rows = await this.usersRepository
+      .createQueryBuilder('user')
+      .select("TO_CHAR(user.createdAt, 'YYYY-MM-DD')", 'date')
+      .addSelect('COUNT(*)', 'count')
+      .where('user.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
+      .groupBy("TO_CHAR(user.createdAt, 'YYYY-MM-DD')")
+      .orderBy('date', 'ASC')
+      .getRawMany();
+
+    return rows.map((row) => ({
+      date: row.date,
+      count: Number(row.count),
+    }));
   }
 
   private async getActivityMetrics(): Promise<ActivityMetricsDto> {
@@ -199,7 +252,6 @@ export class DashboardService {
   }
 
   async getRealTimeMetrics(userId: string): Promise<Partial<DashboardStatsDto>> {
-    // Get current snapshot of key metrics
     const now = new Date();
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -210,7 +262,7 @@ export class DashboardService {
         .where('user.createdAt >= :date', { date: dayAgo })
         .getCount(),
       this.usageTrackingRepository.count({
-        where: { createdAt: MoreThanOrEqual(dayAgo) },
+        where: { createdAt: Between(dayAgo, now) },
       }),
     ]);
 
@@ -234,9 +286,3 @@ export class DashboardService {
     } as Partial<DashboardStatsDto>;
   }
 }
-
-
-
-
-
-

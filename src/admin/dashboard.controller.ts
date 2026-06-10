@@ -65,16 +65,13 @@ Retrieve comprehensive dashboard statistics for admin users. Supports filtering 
 - \`GET /admin/dashboard/stats?timeRange=custom&startDate=2024-01-01&endDate=2024-01-31\`
 
 **Statistics Included:**
-- Total users
-- Active users
-- New registrations
-- Feature usage counts
-- Payment statistics
-- Subscription statistics
-- Revenue metrics
-- And more...
+- User metrics (totals, active/inactive, registrations)
+- Feature usage counts by module
+- AI usage metrics and cost aggregates
+- Activity metrics (DAU/WAU/MAU)
+- Registration trend for charting
 
-**Note:** Requires admin or superuser role`,
+**Note:** Payment and revenue statistics are available at \`GET /admin/payments/stats\`. Requires admin or superuser role`,
   })
   @ApiQuery({
     name: 'timeRange',

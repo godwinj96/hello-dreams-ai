@@ -4,6 +4,8 @@ export enum MetricEventType {
   MetricUpdate = 'metric_update',
   UserRegistered = 'user_registered',
   FeatureUsed = 'feature_used',
+  PaymentCompleted = 'payment_completed',
+  SubscriptionChanged = 'subscription_changed',
   Heartbeat = 'heartbeat',
 }
 

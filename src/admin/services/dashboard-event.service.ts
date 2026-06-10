@@ -30,6 +30,22 @@ export class DashboardEventService {
     });
   }
 
+  emitPaymentCompleted(userId: string, amount: number, currency: string): void {
+    this.eventSubject.next({
+      type: MetricEventType.PaymentCompleted,
+      timestamp: new Date(),
+      data: { userId, amount, currency },
+    });
+  }
+
+  emitSubscriptionChanged(userId: string, status: string): void {
+    this.eventSubject.next({
+      type: MetricEventType.SubscriptionChanged,
+      timestamp: new Date(),
+      data: { userId, status },
+    });
+  }
+
   emitHeartbeat(): void {
     this.eventSubject.next({
       type: MetricEventType.Heartbeat,

@@ -33,6 +33,7 @@ import { UserFiltersDto } from './dto/user-filters.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { PromoteUserDto } from './dto/promote-user.dto';
 import { UserResponseDto, UserStatsDto } from './dto/user-response.dto';
+import { toUserResponseDto } from './utils/user.mapper';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
 
 @ApiTags('users')
@@ -46,8 +47,8 @@ export class UsersController {
   @Roles(Role.User, Role.Admin, Role.Superuser)
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile', type: UserResponseDto })
-  getProfile(@Request() req) {
-    return req.user;
+  getProfile(@Request() req): UserResponseDto {
+    return toUserResponseDto(req.user);
   }
 
   @Get()
@@ -93,7 +94,7 @@ export class UsersController {
     @Request() req,
     @Body() createAdminDto: CreateAdminDto,
   ): Promise<UserResponseDto> {
-    return this.usersService.createAdmin(req.user.id, createAdminDto);
+    return this.usersService.createAdmin(req.user.id, createAdminDto, req.ip);
   }
 
   @Patch(':id/promote')
@@ -110,7 +111,7 @@ export class UsersController {
     @Param('id', UUIDValidationPipe) id: string,
     @Body() promoteDto: PromoteUserDto,
   ): Promise<UserResponseDto> {
-    return this.usersService.promoteUser(req.user.id, id, promoteDto.role);
+    return this.usersService.promoteUser(req.user.id, id, promoteDto.role, req.ip);
   }
 
   @Delete('admins/:id')
@@ -122,7 +123,7 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Only superusers can remove admins' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async removeAdmin(@Request() req, @Param('id', UUIDValidationPipe) id: string): Promise<void> {
-    return this.usersService.removeAdmin(req.user.id, id);
+    return this.usersService.removeAdmin(req.user.id, id, req.ip);
   }
 
   @Patch(':id/status')
@@ -142,6 +143,7 @@ export class UsersController {
       req.user.id,
       id,
       updateStatusDto.isActive,
+      req.ip,
     );
   }
 
@@ -159,7 +161,7 @@ export class UsersController {
     @Param('id', UUIDValidationPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
   ): Promise<UserResponseDto> {
-    return this.usersService.updateUser(req.user.id, id, updateUserDto);
+    return this.usersService.updateUser(req.user.id, id, updateUserDto, req.ip);
   }
 
   @Delete(':id')
@@ -171,7 +173,7 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Only superusers can delete users' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async deleteUser(@Request() req, @Param('id', UUIDValidationPipe) id: string): Promise<void> {
-    return this.usersService.deleteUser(req.user.id, id);
+    return this.usersService.deleteUser(req.user.id, id, req.ip);
   }
 }
 

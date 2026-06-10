@@ -57,6 +57,28 @@ export class FeatureUsageDto {
 
   @ApiProperty({ description: 'Headshot generator usage count', example: 50 })
   headshotGenerator: number;
+
+  @ApiProperty({ description: 'Job application usage count', example: 75 })
+  jobApplication: number;
+}
+
+export class CostMetricsDto {
+  @ApiProperty({ description: 'Total tokens used in period', example: 1500000 })
+  totalTokensUsed: number;
+
+  @ApiProperty({ description: 'Total cost in USD', example: 12.5 })
+  totalCostUsd: number;
+
+  @ApiProperty({ description: 'Total cost in NGN', example: 18500 })
+  totalCostNgn: number;
+}
+
+export class RegistrationTrendPointDto {
+  @ApiProperty({ example: '2024-01-15' })
+  date: string;
+
+  @ApiProperty({ example: 12 })
+  count: number;
 }
 
 export class ActivityMetricsDto {
@@ -82,6 +104,15 @@ export class DashboardStatsDto {
 
   @ApiProperty({ description: 'Activity metrics', type: ActivityMetricsDto })
   activityMetrics: ActivityMetricsDto;
+
+  @ApiProperty({ description: 'Aggregated AI cost metrics', type: CostMetricsDto })
+  costMetrics: CostMetricsDto;
+
+  @ApiProperty({
+    description: 'Daily registration counts for charting',
+    type: [RegistrationTrendPointDto],
+  })
+  registrationTrend: RegistrationTrendPointDto[];
 
   @ApiProperty({
     description: 'Timestamp of when stats were generated',

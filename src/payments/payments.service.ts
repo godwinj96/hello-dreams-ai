@@ -16,6 +16,7 @@ import {
 import { User } from '../users/entities/user.entity';
 import { PaystackService } from './paystack.service';
 import { ConfigService } from '@nestjs/config';
+import { DashboardEventService } from '../admin/services/dashboard-event.service';
 
 @Injectable()
 export class PaymentsService {
@@ -31,6 +32,7 @@ export class PaymentsService {
     private paystackService: PaystackService,
     private configService: ConfigService,
     private dataSource: DataSource,
+    private dashboardEventService: DashboardEventService,
   ) {}
 
   /**
@@ -195,6 +197,12 @@ export class PaymentsService {
     );
     await this.addCredits(payment.userId, creditsPerPayment);
 
+    this.dashboardEventService.emitPaymentCompleted(
+      payment.userId,
+      Number(payment.amount),
+      payment.currency,
+    );
+
     this.logger.log(`Payment ${paymentId} processed successfully`);
 
     return payment;
@@ -258,6 +266,11 @@ export class PaymentsService {
       10000,
     );
     await this.addCredits(subscription.userId, creditsPerSubscription);
+
+    this.dashboardEventService.emitSubscriptionChanged(
+      subscription.userId,
+      subscription.status,
+    );
 
     this.logger.log(
       `Subscription ${subscriptionCode} payment processed successfully`,

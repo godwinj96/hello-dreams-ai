@@ -25,9 +25,13 @@ export class CreateLinkedInProfilesTable1770200000000 implements MigrationInterf
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "linkedin_profiles"
-      ADD CONSTRAINT "FK_linkedin_profiles_user"
-      FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION
+      DO $$ BEGIN
+        ALTER TABLE "linkedin_profiles"
+        ADD CONSTRAINT "FK_linkedin_profiles_user"
+        FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$
     `);
   }
 

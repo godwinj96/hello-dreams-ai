@@ -23,6 +23,7 @@ import { Document } from './document-generator/entities/document.entity';
 import { LinkedInProfile } from './linkedin-optimization/entities/linkedin-profile.entity';
 import { HeadshotGeneration } from './headshot-generator/entities/headshot-generation.entity';
 import { UsageTracking } from './admin/entities/usage-tracking.entity';
+import { AdminAuditLog } from './admin/entities/admin-audit-log.entity';
 import { Payment } from './payments/entities/payment.entity';
 import { Subscription } from './payments/entities/subscription.entity';
 import { UserContextEmbedding } from './shared/entities/user-context-embedding.entity';
@@ -84,6 +85,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
               LinkedInProfile,
               HeadshotGeneration,
               UsageTracking,
+              AdminAuditLog,
               Payment,
               Subscription,
               UserContextEmbedding,
@@ -117,6 +119,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
               LinkedInProfile,
               HeadshotGeneration,
               UsageTracking,
+              AdminAuditLog,
               Payment,
               Subscription,
               UserContextEmbedding,
