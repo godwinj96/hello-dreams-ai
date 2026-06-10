@@ -11,6 +11,8 @@ import { OpenAIService } from '../../shared/services/openai.service';
 import { MessageRole } from '../../resume-builder/enums/message-role.enum';
 import { JobApplication } from '../entities/job-application.entity';
 import { JobListing } from '../entities/job-listing.entity';
+import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
+import { addChatUsageToAccumulator } from '../../shared/utils/ai-usage.helpers';
 
 @Injectable()
 export class JobDocumentGeneratorService {
@@ -34,6 +36,7 @@ export class JobDocumentGeneratorService {
     application: JobApplication,
     listing: JobListing,
     userId: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<{ resume: Record<string, any>; coverLetter: Record<string, any> }> {
     // Fetch user's latest resume data
     const resumeData = await this.getLatestResumeData(userId);
@@ -47,12 +50,19 @@ export class JobDocumentGeneratorService {
 
     let rawOutput: string;
     try {
-      rawOutput = await this.openAIService.chat(
+      const result = await this.openAIService.chatWithUsage(
         [{ role: MessageRole.User, content: prompt }],
         undefined,
         0.7,
         4096,
       );
+      addChatUsageToAccumulator(costAccumulator, {
+        operation: 'chat',
+        provider: 'openai',
+        model: result.model,
+        usage: result.usage,
+      });
+      rawOutput = result.content;
     } catch (err) {
       this.logger.error(`OpenAI generation failed: ${err.message}`);
       throw err;

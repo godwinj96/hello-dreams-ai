@@ -18,7 +18,7 @@ import { JobApplyService } from './services/job-apply.service';
 import { JobDocumentGeneratorService } from './services/job-document-generator.service';
 import { ApplyJobResponseDto } from './dto/apply-job.dto';
 import { User } from '../users/entities/user.entity';
-import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 
 @Injectable()
@@ -33,7 +33,7 @@ export class JobApplicationService {
     private jobSearchService: JobSearchService,
     private jobApplyService: JobApplyService,
     private jobDocumentGenerator: JobDocumentGeneratorService,
-    private usageTrackingService: UsageTrackingService,
+    private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
   ) {}
 
@@ -179,15 +179,21 @@ export class JobApplicationService {
     });
     this.assertOwnership(application, id, userId);
 
+    const costAccumulator = this.aiCostTrackingService.createAccumulator();
     const result = await this.jobDocumentGenerator.generateDocuments(
       application,
       application.jobListing,
       userId,
+      costAccumulator,
     );
 
-    this.usageTrackingService
-      .trackAction(userId, 'message_sent', 'job-application', { applicationId: id })
-      .catch((err) => this.logger.error('Failed to track usage', err));
+    this.aiCostTrackingService.recordFromAccumulator(
+      userId,
+      'documents_generated',
+      'job-application',
+      costAccumulator,
+      { applicationId: id },
+    );
 
     this.dashboardEventService.emitFeatureUsed(userId, 'job-application', 'documents_generated');
 

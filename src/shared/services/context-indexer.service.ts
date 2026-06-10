@@ -23,7 +23,10 @@ export class ContextIndexerService {
     resumeId: string,
     userId: string,
     resumeContent: any,
-  ): Promise<UserContextEmbedding | null> {
+  ): Promise<{
+    record: UserContextEmbedding | null;
+    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+  }> {
     try {
       // Extract text from resume content
       const text = this.extractResumeText(resumeContent);
@@ -32,13 +35,16 @@ export class ContextIndexerService {
         this.logger.warn(
           `Skipping resume embedding for resume ${resumeId}: extracted text is empty`,
         );
-        return null;
+        return { record: null };
       }
 
-      // Generate embedding
       const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingUsage = {
+        model: embeddingResult.model,
+        promptTokens: embeddingResult.usage.promptTokens,
+        totalTokens: embeddingResult.usage.totalTokens,
+      };
 
-      // Check if embedding already exists
       const existing = await this.embeddingRepository.findOne({
         where: {
           userId,
@@ -48,7 +54,6 @@ export class ContextIndexerService {
       });
 
       if (existing) {
-        // Update existing embedding
         existing.content = text;
         existing.embedding = embeddingResult.embedding;
         existing.metadata = {
@@ -56,29 +61,28 @@ export class ContextIndexerService {
           model: embeddingResult.model,
           updatedAt: new Date().toISOString(),
         };
-        return await this.embeddingRepository.save(existing);
-      } else {
-        // Create new embedding
-        const embedding = this.embeddingRepository.create({
-          userId,
-          contentType: 'resume',
-          contentId: resumeId,
-          content: text,
-          embedding: embeddingResult.embedding,
-          metadata: {
-            model: embeddingResult.model,
-            createdAt: new Date().toISOString(),
-          },
-        });
-        return await this.embeddingRepository.save(embedding);
+        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
       }
+
+      const embedding = this.embeddingRepository.create({
+        userId,
+        contentType: 'resume',
+        contentId: resumeId,
+        content: text,
+        embedding: embeddingResult.embedding,
+        metadata: {
+          model: embeddingResult.model,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
     } catch (error) {
       this.logger.warn(
         `Resume embedding indexing skipped for ${resumeId} (app continues without vector index)`,
         error instanceof Error ? error.message : String(error),
       );
       this.embeddingRetryService.scheduleResumeReindex(resumeId, userId);
-      return null;
+      return { record: null };
     }
   }
 
@@ -89,7 +93,10 @@ export class ContextIndexerService {
     documentId: string,
     userId: string,
     documentContent: any,
-  ): Promise<UserContextEmbedding | null> {
+  ): Promise<{
+    record: UserContextEmbedding | null;
+    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+  }> {
     try {
       // Extract text from document content
       const text = this.extractDocumentText(documentContent);
@@ -98,13 +105,16 @@ export class ContextIndexerService {
         this.logger.warn(
           `Skipping document embedding for document ${documentId}: extracted text is empty`,
         );
-        return null;
+        return { record: null };
       }
 
-      // Generate embedding
       const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingUsage = {
+        model: embeddingResult.model,
+        promptTokens: embeddingResult.usage.promptTokens,
+        totalTokens: embeddingResult.usage.totalTokens,
+      };
 
-      // Check if embedding already exists
       const existing = await this.embeddingRepository.findOne({
         where: {
           userId,
@@ -114,7 +124,6 @@ export class ContextIndexerService {
       });
 
       if (existing) {
-        // Update existing embedding
         existing.content = text;
         existing.embedding = embeddingResult.embedding;
         existing.metadata = {
@@ -122,30 +131,29 @@ export class ContextIndexerService {
           model: embeddingResult.model,
           updatedAt: new Date().toISOString(),
         };
-        return await this.embeddingRepository.save(existing);
-      } else {
-        // Create new embedding
-        const embedding = this.embeddingRepository.create({
-          userId,
-          contentType: 'document',
-          contentId: documentId,
-          content: text,
-          embedding: embeddingResult.embedding,
-          metadata: {
-            model: embeddingResult.model,
-            documentType: documentContent.documentType,
-            createdAt: new Date().toISOString(),
-          },
-        });
-        return await this.embeddingRepository.save(embedding);
+        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
       }
+
+      const embedding = this.embeddingRepository.create({
+        userId,
+        contentType: 'document',
+        contentId: documentId,
+        content: text,
+        embedding: embeddingResult.embedding,
+        metadata: {
+          model: embeddingResult.model,
+          documentType: documentContent.documentType,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
     } catch (error) {
       this.logger.warn(
         `Document embedding indexing skipped for ${documentId} (app continues without vector index)`,
         error instanceof Error ? error.message : String(error),
       );
       this.embeddingRetryService.scheduleDocumentReindex(documentId, userId);
-      return null;
+      return { record: null };
     }
   }
 
@@ -155,7 +163,10 @@ export class ContextIndexerService {
   async indexPersona(
     userId: string,
     personaData: any,
-  ): Promise<UserContextEmbedding | null> {
+  ): Promise<{
+    record: UserContextEmbedding | null;
+    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+  }> {
     try {
       // Extract text from persona data
       const text = this.extractPersonaText(personaData);
@@ -181,16 +192,18 @@ export class ContextIndexerService {
             hasPersonaFields,
           },
         );
-        return null;
+        return { record: null };
       }
 
-      // Generate embedding
       const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingUsage = {
+        model: embeddingResult.model,
+        promptTokens: embeddingResult.usage.promptTokens,
+        totalTokens: embeddingResult.usage.totalTokens,
+      };
 
-      // Use userId as contentId for persona (one per user)
       const contentId = userId;
 
-      // Check if embedding already exists
       const existing = await this.embeddingRepository.findOne({
         where: {
           userId,
@@ -200,7 +213,6 @@ export class ContextIndexerService {
       });
 
       if (existing) {
-        // Update existing embedding
         existing.content = text;
         existing.embedding = embeddingResult.embedding;
         existing.metadata = {
@@ -208,29 +220,28 @@ export class ContextIndexerService {
           model: embeddingResult.model,
           updatedAt: new Date().toISOString(),
         };
-        return await this.embeddingRepository.save(existing);
-      } else {
-        // Create new embedding
-        const embedding = this.embeddingRepository.create({
-          userId,
-          contentType: 'profile',
-          contentId,
-          content: text,
-          embedding: embeddingResult.embedding,
-          metadata: {
-            model: embeddingResult.model,
-            createdAt: new Date().toISOString(),
-          },
-        });
-        return await this.embeddingRepository.save(embedding);
+        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
       }
+
+      const embedding = this.embeddingRepository.create({
+        userId,
+        contentType: 'profile',
+        contentId,
+        content: text,
+        embedding: embeddingResult.embedding,
+        metadata: {
+          model: embeddingResult.model,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
     } catch (error) {
       this.logger.warn(
         `Persona/profile embedding indexing skipped for user ${userId} (app continues without vector index)`,
         error instanceof Error ? error.message : String(error),
       );
       this.embeddingRetryService.schedulePersonaReindex(userId);
-      return null;
+      return { record: null };
     }
   }
 
@@ -246,7 +257,10 @@ export class ContextIndexerService {
     conversationId: string,
     userId: string,
     userMessages: string[],
-  ): Promise<UserContextEmbedding | null> {
+  ): Promise<{
+    record: UserContextEmbedding | null;
+    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+  }> {
     try {
       const text = userMessages
         .map((m) => m.trim())
@@ -255,10 +269,15 @@ export class ContextIndexerService {
 
       if (!text) {
         this.logger.warn(`Skipping conversation embedding for ${conversationId}: no user messages`);
-        return null;
+        return { record: null };
       }
 
       const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingUsage = {
+        model: embeddingResult.model,
+        promptTokens: embeddingResult.usage.promptTokens,
+        totalTokens: embeddingResult.usage.totalTokens,
+      };
 
       const existing = await this.embeddingRepository.findOne({
         where: { userId, contentType: 'conversation', contentId: conversationId },
@@ -268,7 +287,7 @@ export class ContextIndexerService {
         existing.content = text;
         existing.embedding = embeddingResult.embedding;
         existing.metadata = { ...existing.metadata, model: embeddingResult.model, updatedAt: new Date().toISOString() };
-        return await this.embeddingRepository.save(existing);
+        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
       }
 
       const embedding = this.embeddingRepository.create({
@@ -279,13 +298,13 @@ export class ContextIndexerService {
         embedding: embeddingResult.embedding,
         metadata: { model: embeddingResult.model, createdAt: new Date().toISOString() },
       });
-      return await this.embeddingRepository.save(embedding);
+      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
     } catch (error) {
       this.logger.warn(
         `Conversation embedding skipped for ${conversationId} (app continues)`,
         error instanceof Error ? error.message : String(error),
       );
-      return null;
+      return { record: null };
     }
   }
 

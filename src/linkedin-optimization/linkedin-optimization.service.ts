@@ -6,7 +6,7 @@ import { LinkedInContentService } from './services/linkedin-content.service';
 import { ResumeData } from '../resume-builder/entities/resume-data.entity';
 import { Resume } from '../resume-builder/entities/resume.entity';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
-import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 
 @Injectable()
@@ -22,7 +22,7 @@ export class LinkedInOptimizationService {
     private resumeDataRepository: Repository<ResumeData>,
     private linkedInContentService: LinkedInContentService,
     private professionalProfileService: ProfessionalProfileService,
-    private usageTrackingService: UsageTrackingService,
+    private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
   ) {}
 
@@ -34,8 +34,11 @@ export class LinkedInOptimizationService {
       // Get user's latest resume data
       const resumeData = await this.getLatestResumeData(userId);
 
-      // Generate LinkedIn sections
-      const sections = await this.linkedInContentService.generateLinkedInProfile(resumeData);
+      const costAccumulator = this.aiCostTrackingService.createAccumulator();
+      const sections = await this.linkedInContentService.generateLinkedInProfile(
+        resumeData,
+        costAccumulator,
+      );
 
       // Get or create LinkedIn profile
       let profile = await this.linkedInProfileRepository.findOne({
@@ -60,10 +63,12 @@ export class LinkedInOptimizationService {
         this.logger.warn('Could not mark linkedin section as complete', err);
       }
 
-      // Track LinkedIn profile generation
-      this.usageTrackingService
-        .trackAction(userId, 'profile_generated', 'linkedin-optimization')
-        .catch((err) => console.error('Failed to track profile generation:', err));
+      this.aiCostTrackingService.recordFromAccumulator(
+        userId,
+        'profile_generated',
+        'linkedin-optimization',
+        costAccumulator,
+      );
       this.dashboardEventService.emitFeatureUsed(userId, 'linkedin-optimization', 'profile_generated');
 
       return savedProfile;

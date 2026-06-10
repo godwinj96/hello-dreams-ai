@@ -10,6 +10,7 @@ import { PersonaContentService } from './services/persona-content.service';
 import { PersonaArchetype } from './enums/persona-archetype.enum';
 import { PERSONA_QUESTIONS } from './constants/persona-questions';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
 
@@ -24,6 +25,7 @@ export class PersonaBuilderService {
     private personaScoringService: PersonaScoringService,
     private personaContentService: PersonaContentService,
     private usageTrackingService: UsageTrackingService,
+    private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
     private contextIndexerService: ContextIndexerService,
   ) {}
@@ -177,20 +179,35 @@ export class PersonaBuilderService {
       } : undefined,
     } : personaData;
 
-    // Index persona/profile embedding — fire-and-forget
-    this.contextIndexerService.indexPersona(userId, {
-      persona: updatedProfile.persona,
-      personaData: mappedPersonaData,
-      careerGoals: updatedProfile.careerGoals,
-    }).catch((err) => this.logger.warn('Persona index failed (non-fatal)', err));
+    const costAccumulator = this.aiCostTrackingService.createAccumulator();
+    try {
+      const indexResult = await this.contextIndexerService.indexPersona(userId, {
+        persona: updatedProfile.persona,
+        personaData: mappedPersonaData,
+        careerGoals: updatedProfile.careerGoals,
+      });
+      if (indexResult.embeddingUsage) {
+        costAccumulator.addEmbedding({
+          provider: 'openai',
+          model: indexResult.embeddingUsage.model,
+          promptTokens: indexResult.embeddingUsage.promptTokens,
+          totalTokens: indexResult.embeddingUsage.totalTokens,
+        });
+      }
+    } catch (err) {
+      this.logger.warn('Persona index failed (non-fatal)', err);
+    }
 
-    // Track persona generation
-    this.usageTrackingService
-      .trackAction(userId, 'persona_generated', 'persona-builder', {
+    this.aiCostTrackingService.recordFromAccumulator(
+      userId,
+      'persona_generated',
+      'persona-builder',
+      costAccumulator,
+      {
         currentPersona: scoringResult.currentPersona,
         idealPersona: scoringResult.idealPersona,
-      })
-      .catch((err) => console.error('Failed to track persona generation:', err));
+      },
+    );
     this.dashboardEventService.emitFeatureUsed(userId, 'persona-builder', 'persona_generated');
 
     return {

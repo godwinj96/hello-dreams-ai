@@ -29,10 +29,11 @@ import { SupabaseStorageService } from '../shared/services/supabase-storage.serv
 import { CvParserService } from './services/cv-parser.service';
 import { CareerProfileConfirmationDto } from './dto/confirmation.dto';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
-import { calculateCost } from '../shared/utils/cost-calculator.util';
 import { buildChatHistoryAfterUserMessage } from '../shared/utils/chat-history.util';
-import { ConfigService } from '@nestjs/config';
+import { AiCostAccumulator } from '../shared/utils/ai-cost-accumulator';
+import { addExtractionUsageToAccumulator } from '../shared/utils/ai-usage.helpers';
 
 @Injectable()
 export class CareerProfileService {
@@ -51,8 +52,8 @@ export class CareerProfileService {
     private supabaseStorageService: SupabaseStorageService,
     private cvParserService: CvParserService,
     private usageTrackingService: UsageTrackingService,
+    private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
-    private configService: ConfigService,
     private contextIndexerService: ContextIndexerService,
   ) {}
 
@@ -225,52 +226,56 @@ export class CareerProfileService {
       aiResponse,
     );
 
-    // Extract and update profile data after each message (for structured collection)
-    await this.extractStructuredDataFromConversation(userId, messagesWithSystem);
+    const costAccumulator = this.aiCostTrackingService.createAccumulator();
 
-    // Index all user messages from this conversation so resume builder and document
-    // generator can semantically search through what the user said during onboarding.
-    // Fire-and-forget — never block the response on embedding latency.
+    await this.extractStructuredDataFromConversation(
+      userId,
+      messagesWithSystem,
+      costAccumulator,
+    );
+
     const allUserMessages = messagesWithSystem
       .filter((m) => m.role === MessageRole.User)
       .map((m) => m.content);
-    this.contextIndexerService.indexConversation(conversationId, userId, allUserMessages)
-      .catch((err) => this.logger.warn('Conversation embedding failed (non-fatal)', err));
-
-    // Track usage with costs
-    if (usageData) {
-      const ngnToUsdRate = this.configService.get<number>('NGN_TO_USD_RATE', 1500);
-      const costCalculation = calculateCost(
-        usageData.model,
-        {
-          promptTokens: usageData.usage.promptTokens,
-          completionTokens: usageData.usage.completionTokens,
-          totalTokens: usageData.usage.totalTokens,
-        },
-        ngnToUsdRate,
+    try {
+      const indexResult = await this.contextIndexerService.indexConversation(
+        conversationId,
+        userId,
+        allUserMessages,
       );
+      if (indexResult.embeddingUsage) {
+        costAccumulator.addEmbedding({
+          provider: 'openai',
+          model: indexResult.embeddingUsage.model,
+          promptTokens: indexResult.embeddingUsage.promptTokens,
+          totalTokens: indexResult.embeddingUsage.totalTokens,
+        });
+      }
+    } catch (err) {
+      this.logger.warn('Conversation embedding failed (non-fatal)', err);
+    }
 
-      this.usageTrackingService
-        .trackUsageWithCosts(
-          userId,
-          'message_sent',
-          'career-profile',
-          costCalculation.tokensUsed,
-          costCalculation.costUsd,
-          costCalculation.costNgn,
-          {
-            conversationId,
-            model: usageData.model,
-            provider: usageData.provider,
-          },
-        )
-        .catch((err) => console.error('Failed to track usage:', err));
+    if (usageData) {
+      costAccumulator.addChat({
+        operation: 'chat',
+        provider: usageData.provider as 'openai' | 'huggingface' | 'ollama',
+        model: usageData.model,
+        usage: usageData.usage,
+        estimated: usageData.provider !== 'openai',
+      });
+    }
+
+    if (!costAccumulator.isEmpty()) {
+      this.aiCostTrackingService.recordFromAccumulator(
+        userId,
+        'message_sent',
+        'career-profile',
+        costAccumulator,
+        { conversationId },
+      );
     } else {
-      // Fallback to old tracking if usage data not available
       this.usageTrackingService
-        .trackAction(userId, 'message_sent', 'career-profile', {
-          conversationId,
-        })
+        .trackAction(userId, 'message_sent', 'career-profile', { conversationId })
         .catch((err) => console.error('Failed to track message:', err));
     }
     this.dashboardEventService.emitFeatureUsed(userId, 'career-profile', 'message_sent');
@@ -336,10 +341,23 @@ export class CareerProfileService {
     audioFile: Express.Multer.File,
   ): Promise<CareerMessageResponseDto> {
     // Transcribe audio to text
-    const transcribedText = await this.voiceService.speechToText(audioFile);
+    const transcription = await this.voiceService.speechToText(audioFile);
+    const voiceAccumulator = this.aiCostTrackingService.createAccumulator();
+    voiceAccumulator.addSpeech({
+      provider: 'openai',
+      model: 'whisper-1',
+      durationSeconds: transcription.durationSecondsEstimate,
+      estimated: true,
+    });
+    this.aiCostTrackingService.recordStandalone(
+      userId,
+      'ai_speech_to_text',
+      'career-profile',
+      voiceAccumulator,
+      { conversationId },
+    );
 
-    // Send as regular message
-    const messageDto = { content: transcribedText };
+    const messageDto = { content: transcription.text };
     const response = await this.sendMessage(conversationId, userId, messageDto);
 
     return response;
@@ -376,6 +394,7 @@ export class CareerProfileService {
   private async extractStructuredDataFromConversation(
     userId: string,
     messages: ChatMessage[],
+    costAccumulator?: AiCostAccumulator,
   ): Promise<void> {
     try {
       // Use OpenAI to extract structured data from conversation
@@ -409,39 +428,39 @@ export class CareerProfileService {
         systemPrompt,
       );
 
-      if (extracted) {
-        // Update basic info
-        if (extracted.name || extracted.email || extracted.phone || extracted.country || extracted.state || extracted.city || extracted.linkedIn) {
+      addExtractionUsageToAccumulator(costAccumulator, extracted);
+
+      if (extracted?.data) {
+        const data = extracted.data;
+        if (data.name || data.email || data.phone || data.country || data.state || data.city || data.linkedIn) {
           await this.professionalProfileService.updateBasicInfo(userId, {
-            name: extracted.name,
-            email: extracted.email,
-            phone: extracted.phone,
-            country: extracted.country,
-            state: extracted.state,
-            city: extracted.city,
-            linkedIn: extracted.linkedIn,
+            name: data.name,
+            email: data.email,
+            phone: data.phone,
+            country: data.country,
+            state: data.state,
+            city: data.city,
+            linkedIn: data.linkedIn,
           });
         }
 
-        // Update target job
-        if (extracted.targetJobTitle || extracted.careerGoal || extracted.salaryExpectation) {
+        if (data.targetJobTitle || data.careerGoal || data.salaryExpectation) {
           await this.professionalProfileService.updateTargetJob(userId, {
-            targetJobTitle: extracted.targetJobTitle,
-            careerGoal: extracted.careerGoal,
-            salaryExpectation: extracted.salaryExpectation,
+            targetJobTitle: data.targetJobTitle,
+            careerGoal: data.careerGoal,
+            salaryExpectation: data.salaryExpectation,
           });
         }
 
-        // Update extracted background data (feeds progress tracker and downstream AI)
-        if (extracted.workExperience || extracted.education || extracted.skills || extracted.background) {
+        if (data.workExperience || data.education || data.skills || data.background) {
           await this.professionalProfileService.updateExtractedData(userId, {
-            background: extracted.background,
-            experience: extracted.workExperience,
-            education: extracted.education,
-            skills: extracted.skills
-              ? (Array.isArray(extracted.skills)
-                  ? extracted.skills.map((s: any) => String(s).trim()).filter(Boolean)
-                  : String(extracted.skills).split(',').map((s: string) => s.trim()).filter(Boolean))
+            background: data.background,
+            experience: data.workExperience,
+            education: data.education,
+            skills: data.skills
+              ? (Array.isArray(data.skills)
+                  ? data.skills.map((s: any) => String(s).trim()).filter(Boolean)
+                  : String(data.skills).split(',').map((s: string) => s.trim()).filter(Boolean))
               : undefined,
           });
         }

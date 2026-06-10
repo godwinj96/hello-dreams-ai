@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OpenAIService } from '../../shared/services/openai.service';
 import { ResumeData } from '../../resume-builder/entities/resume-data.entity';
 import { MessageRole } from '../../resume-builder/enums/message-role.enum';
+import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
+import { openAIChatAndTrack } from '../../shared/utils/ai-usage.helpers';
 
 export interface LinkedInSections {
   headline: {
@@ -43,10 +45,13 @@ export class LinkedInContentService {
   /**
    * Generate all LinkedIn sections from resume data
    */
-  async generateLinkedInProfile(resumeData: ResumeData | null): Promise<LinkedInSections> {
+  async generateLinkedInProfile(
+    resumeData: ResumeData | null,
+    costAccumulator?: AiCostAccumulator,
+  ): Promise<LinkedInSections> {
     try {
-      const headline = await this.generateHeadline(resumeData);
-      const about = await this.generateAbout(resumeData);
+      const headline = await this.generateHeadline(resumeData, costAccumulator);
+      const about = await this.generateAbout(resumeData, costAccumulator);
       const topSkills = this.extractTopSkills(resumeData, 6);
       const experience = this.generateExperience(resumeData);
       const education = this.generateEducation(resumeData);
@@ -73,7 +78,10 @@ export class LinkedInContentService {
   /**
    * Generate headline (2-3 options)
    */
-  private async generateHeadline(resumeData: ResumeData | null): Promise<{
+  private async generateHeadline(
+    resumeData: ResumeData | null,
+    costAccumulator?: AiCostAccumulator,
+  ): Promise<{
     options: string[];
     selected?: string;
   }> {
@@ -100,10 +108,14 @@ Top skills: ${skills}
 Generate 2-3 headline options. Return as a JSON array of strings.`;
 
     try {
-      const response = await this.openAIService.chat([
-        { role: MessageRole.System, content: 'You are a LinkedIn profile optimizer.' },
-        { role: MessageRole.User, content: prompt },
-      ]);
+      const response = await openAIChatAndTrack(
+        this.openAIService,
+        [
+          { role: MessageRole.System, content: 'You are a LinkedIn profile optimizer.' },
+          { role: MessageRole.User, content: prompt },
+        ],
+        costAccumulator,
+      );
 
       // Try to extract JSON array
       const jsonMatch = response.match(/\[[\s\S]*\]/);
@@ -137,7 +149,10 @@ Generate 2-3 headline options. Return as a JSON array of strings.`;
   /**
    * Generate About section
    */
-  private async generateAbout(resumeData: ResumeData | null): Promise<string> {
+  private async generateAbout(
+    resumeData: ResumeData | null,
+    costAccumulator?: AiCostAccumulator,
+  ): Promise<string> {
     if (!resumeData) {
       return 'Professional seeking new opportunities.';
     }
@@ -163,10 +178,14 @@ Skills: ${skills}
 Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs max.`;
 
     try {
-      const response = await this.openAIService.chat([
-        { role: MessageRole.System, content: 'You are a LinkedIn profile optimizer.' },
-        { role: MessageRole.User, content: prompt },
-      ]);
+      const response = await openAIChatAndTrack(
+        this.openAIService,
+        [
+          { role: MessageRole.System, content: 'You are a LinkedIn profile optimizer.' },
+          { role: MessageRole.User, content: prompt },
+        ],
+        costAccumulator,
+      );
 
       return response.trim();
     } catch (error) {

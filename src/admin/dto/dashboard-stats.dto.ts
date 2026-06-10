@@ -62,6 +62,32 @@ export class FeatureUsageDto {
   jobApplication: number;
 }
 
+export class CostByModuleDto {
+  @ApiProperty()
+  resumeBuilder: number;
+
+  @ApiProperty()
+  careerProfile: number;
+
+  @ApiProperty()
+  documentGenerator: number;
+
+  @ApiProperty()
+  personaBuilder: number;
+
+  @ApiProperty()
+  linkedinOptimization: number;
+
+  @ApiProperty()
+  headshotGenerator: number;
+
+  @ApiProperty()
+  jobApplication: number;
+
+  @ApiProperty()
+  shared: number;
+}
+
 export class CostMetricsDto {
   @ApiProperty({ description: 'Total tokens used in period', example: 1500000 })
   totalTokensUsed: number;
@@ -71,6 +97,9 @@ export class CostMetricsDto {
 
   @ApiProperty({ description: 'Total cost in NGN', example: 18500 })
   totalCostNgn: number;
+
+  @ApiProperty({ description: 'USD cost by module', type: CostByModuleDto })
+  costByModule: CostByModuleDto;
 }
 
 export class RegistrationTrendPointDto {

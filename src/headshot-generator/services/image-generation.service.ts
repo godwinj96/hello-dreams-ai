@@ -7,6 +7,10 @@ import { SupabaseStorageService } from '../../shared/services/supabase-storage.s
 type GenerationResult = {
   buffers: Buffer[];
   provider: 'openai';
+  imageCount: number;
+  model: string;
+  size: string;
+  quality: 'low' | 'medium' | 'high';
 };
 
 @Injectable()
@@ -14,6 +18,7 @@ export class ImageGenerationService {
   private readonly logger = new Logger(ImageGenerationService.name);
   private readonly openai: OpenAI;
   private readonly model: string;
+  private readonly imageQuality: 'low' | 'medium' | 'high';
 
   constructor(
     private readonly configService: ConfigService,
@@ -25,6 +30,9 @@ export class ImageGenerationService {
     }
     this.openai = new OpenAI({ apiKey: openaiKey });
     this.model = this.configService.get<string>('OPENAI_IMAGE_MODEL', 'gpt-image-1');
+    const quality = this.configService.get<string>('OPENAI_IMAGE_QUALITY', 'medium');
+    this.imageQuality =
+      quality === 'low' || quality === 'high' ? quality : 'medium';
     this.logger.log(`OpenAI image generation enabled (model: ${this.model}).`);
   }
 
@@ -110,7 +118,14 @@ export class ImageGenerationService {
       }
 
       this.logger.log(`Successfully generated ${buffers.length} headshot(s) via OpenAI.`);
-      return { buffers, provider: 'openai' };
+      return {
+        buffers,
+        provider: 'openai',
+        imageCount: buffers.length,
+        model: this.model,
+        size: '1024x1024',
+        quality: this.imageQuality,
+      };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.error(`OpenAI image generation failed: ${msg}`);

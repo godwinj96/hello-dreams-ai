@@ -24,7 +24,10 @@ export class VoiceService {
   /**
    * Transcribe audio to text using OpenAI Whisper
    */
-  async speechToText(audioFile: Express.Multer.File): Promise<string> {
+  async speechToText(audioFile: Express.Multer.File): Promise<{
+    text: string;
+    durationSecondsEstimate: number;
+  }> {
     if (!this.openai) {
       throw new BadRequestException('OpenAI API not configured');
     }
@@ -57,7 +60,11 @@ export class VoiceService {
           language: 'en', // Can be made configurable
         });
 
-        return transcription.text;
+        const durationSecondsEstimate = Math.max(
+          1,
+          Math.ceil(audioFile.buffer.length / 16_000),
+        );
+        return { text: transcription.text, durationSecondsEstimate };
       } finally {
         // Clean up temp file
         if (fs.existsSync(tempFilePath)) {

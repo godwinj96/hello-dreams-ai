@@ -24,10 +24,9 @@ import {
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
 import { UpdateDocumentDto, PatchDocumentDto } from './dto/update-document.dto';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
-import { calculateCost } from '../shared/utils/cost-calculator.util';
 import { buildChatHistoryAfterUserMessage } from '../shared/utils/chat-history.util';
-import { ConfigService } from '@nestjs/config';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
 import { UserContextEmbedding } from '../shared/entities/user-context-embedding.entity';
 import { Resume } from '../resume-builder/entities/resume.entity';
@@ -49,8 +48,8 @@ export class DocumentGeneratorServiceMain {
     private documentGenerator: DocumentGeneratorService,
     private professionalProfileService: ProfessionalProfileService,
     private usageTrackingService: UsageTrackingService,
+    private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
-    private configService: ConfigService,
     private contextIndexerService: ContextIndexerService,
     private userContextService: UserContextService,
     @InjectRepository(UserContextEmbedding)
@@ -256,40 +255,28 @@ export class DocumentGeneratorServiceMain {
       }
     }
 
-    // Track usage with costs
+    const costAccumulator = this.aiCostTrackingService.createAccumulator();
     if (usageData) {
-      const ngnToUsdRate = this.configService.get<number>('NGN_TO_USD_RATE', 1500);
-      const costCalculation = calculateCost(
-        usageData.model,
-        {
-          promptTokens: usageData.usage.promptTokens,
-          completionTokens: usageData.usage.completionTokens,
-          totalTokens: usageData.usage.totalTokens,
-        },
-        ngnToUsdRate,
-      );
+      costAccumulator.addChat({
+        operation: 'chat',
+        provider: usageData.provider as 'openai' | 'huggingface' | 'ollama',
+        model: usageData.model,
+        usage: usageData.usage,
+        estimated: usageData.provider !== 'openai',
+      });
+    }
 
-      this.usageTrackingService
-        .trackUsageWithCosts(
-          userId,
-          'message_sent',
-          'document-generator',
-          costCalculation.tokensUsed,
-          costCalculation.costUsd,
-          costCalculation.costNgn,
-          {
-            conversationId,
-            model: usageData.model,
-            provider: usageData.provider,
-          },
-        )
-        .catch((err) => console.error('Failed to track usage:', err));
+    if (!costAccumulator.isEmpty()) {
+      this.aiCostTrackingService.recordFromAccumulator(
+        userId,
+        'message_sent',
+        'document-generator',
+        costAccumulator,
+        { conversationId },
+      );
     } else {
-      // Fallback to old tracking if usage data not available
       this.usageTrackingService
-        .trackAction(userId, 'message_sent', 'document-generator', {
-          conversationId,
-        })
+        .trackAction(userId, 'message_sent', 'document-generator', { conversationId })
         .catch((err) => console.error('Failed to track message:', err));
     }
     this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'message_sent');
@@ -360,6 +347,7 @@ export class DocumentGeneratorServiceMain {
 
     if (existingDocument) {
       // Generate new version
+      const costAccumulator = this.aiCostTrackingService.createAccumulator();
       const documentContent = await this.documentGenerator.generateDocument(
         messagesWithSystem,
         conversation.documentType,
@@ -367,47 +355,54 @@ export class DocumentGeneratorServiceMain {
         conversation.targetJobTitle || undefined,
         conversation.targetCompany || undefined,
         conversation.jobDescription || undefined,
+        costAccumulator,
       );
       existingDocument.content = documentContent;
       existingDocument.version += 1;
       const updated = await this.documentRepository.save(existingDocument);
-      
-      // Index document embedding — fire-and-forget
-      this.contextIndexerService.indexDocument(updated.id, userId, updated.content).catch((err) =>
-        this.logger.warn('Document re-index failed (non-fatal)', err),
-      );
-      
-      // Track document generation
-      this.usageTrackingService
-        .trackAction(userId, 'document_generated', 'document-generator', {
+
+      try {
+        const indexResult = await this.contextIndexerService.indexDocument(
+          updated.id,
+          userId,
+          updated.content,
+        );
+        if (indexResult.embeddingUsage) {
+          costAccumulator.addEmbedding({
+            provider: 'openai',
+            model: indexResult.embeddingUsage.model,
+            promptTokens: indexResult.embeddingUsage.promptTokens,
+            totalTokens: indexResult.embeddingUsage.totalTokens,
+          });
+        }
+      } catch (err) {
+        this.logger.warn('Document re-index failed (non-fatal)', err);
+      }
+
+      this.aiCostTrackingService.recordFromAccumulator(
+        userId,
+        'document_generated',
+        'document-generator',
+        costAccumulator,
+        {
           conversationId,
           documentType: conversation.documentType,
           version: updated.version,
-        })
-        .catch((err) => console.error('Failed to track document generation:', err));
-      this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'document_generated');
-      
-      return this.mapDocumentToDto(updated);
-    } else {
-      // Create new document
-      const result = await this.generateAndSaveDocument(
-        conversationId,
-        userId,
-        conversation,
-        messagesWithSystem,
+        },
       );
-      
-      // Track document generation
-      this.usageTrackingService
-        .trackAction(userId, 'document_generated', 'document-generator', {
-          conversationId,
-          documentType: conversation.documentType,
-        })
-        .catch((err) => console.error('Failed to track document generation:', err));
       this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'document_generated');
-      
-      return result;
+
+      return this.mapDocumentToDto(updated);
     }
+
+    const result = await this.generateAndSaveDocument(
+      conversationId,
+      userId,
+      conversation,
+      messagesWithSystem,
+    );
+    this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'document_generated');
+    return result;
   }
 
   async getDocument(
@@ -526,6 +521,7 @@ export class DocumentGeneratorServiceMain {
     conversation: DocumentConversation,
     messages: ChatMessage[],
   ): Promise<DocumentResponseDto> {
+    const costAccumulator = this.aiCostTrackingService.createAccumulator();
     const documentContent = await this.documentGenerator.generateDocument(
       messages,
       conversation.documentType,
@@ -533,6 +529,7 @@ export class DocumentGeneratorServiceMain {
       conversation.targetJobTitle || undefined,
       conversation.targetCompany || undefined,
       conversation.jobDescription || undefined,
+      costAccumulator,
     );
 
     const document = this.documentRepository.create({
@@ -547,9 +544,30 @@ export class DocumentGeneratorServiceMain {
 
     const saved = await this.documentRepository.save(document);
 
-    // Index document embedding — fire-and-forget
-    this.contextIndexerService.indexDocument(saved.id, userId, saved.content).catch((err) =>
-      this.logger.warn('Document index failed (non-fatal)', err),
+    try {
+      const indexResult = await this.contextIndexerService.indexDocument(
+        saved.id,
+        userId,
+        saved.content,
+      );
+      if (indexResult.embeddingUsage) {
+        costAccumulator.addEmbedding({
+          provider: 'openai',
+          model: indexResult.embeddingUsage.model,
+          promptTokens: indexResult.embeddingUsage.promptTokens,
+          totalTokens: indexResult.embeddingUsage.totalTokens,
+        });
+      }
+    } catch (err) {
+      this.logger.warn('Document index failed (non-fatal)', err);
+    }
+
+    this.aiCostTrackingService.recordFromAccumulator(
+      userId,
+      'document_generated',
+      'document-generator',
+      costAccumulator,
+      { conversationId, documentType: conversation.documentType, version: 1 },
     );
 
     // Mark section as complete
@@ -756,6 +774,28 @@ Guidelines for the statement itself:
   /**
    * Backfill embeddings for user resumes, documents, and persona if missing
    */
+  private recordStandaloneEmbedding(
+    userId: string,
+    usage?: { model: string; promptTokens: number; totalTokens: number },
+    extra?: Record<string, unknown>,
+  ): void {
+    if (!usage) return;
+    const acc = this.aiCostTrackingService.createAccumulator();
+    acc.addEmbedding({
+      provider: 'openai',
+      model: usage.model,
+      promptTokens: usage.promptTokens,
+      totalTokens: usage.totalTokens,
+    });
+    this.aiCostTrackingService.recordStandalone(
+      userId,
+      'ai_embedding',
+      'document-generator',
+      acc,
+      extra,
+    );
+  }
+
   private async backfillUserEmbeddings(userId: string): Promise<void> {
     // Backfill resumes
     const resumes = await this.resumeRepository.find({
@@ -772,9 +812,15 @@ Guidelines for the statement itself:
           where: { resumeId: resume.id },
         });
         const content = resumeData ?? resume.content;
-        await this.contextIndexerService.indexResume(resume.id, userId, content).catch((err) =>
-          this.logger.warn(`Backfill resume ${resume.id} failed`, err),
-        );
+        try {
+          const result = await this.contextIndexerService.indexResume(resume.id, userId, content);
+          this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
+            resumeId: resume.id,
+            source: 'backfill',
+          });
+        } catch (err) {
+          this.logger.warn(`Backfill resume ${resume.id} failed`, err);
+        }
       }
     }
 
@@ -788,9 +834,15 @@ Guidelines for the statement itself:
         where: { userId, contentType: 'document', contentId: doc.id },
       });
       if (!exists) {
-        await this.contextIndexerService.indexDocument(doc.id, userId, doc.content).catch((err) =>
-          this.logger.warn(`Backfill document ${doc.id} failed`, err),
-        );
+        try {
+          const result = await this.contextIndexerService.indexDocument(doc.id, userId, doc.content);
+          this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
+            documentId: doc.id,
+            source: 'backfill',
+          });
+        } catch (err) {
+          this.logger.warn(`Backfill document ${doc.id} failed`, err);
+        }
       }
     }
 
@@ -815,11 +867,16 @@ Guidelines for the statement itself:
         });
       }
 
-      await this.contextIndexerService.indexPersona(userId, {
-        persona: profile.persona,
-        personaData: profile.personaData,
-        careerGoals: profile.careerGoals,
-      }).catch((err) => this.logger.warn(`Backfill persona for ${userId} failed`, err));
+      try {
+        const result = await this.contextIndexerService.indexPersona(userId, {
+          persona: profile.persona,
+          personaData: profile.personaData,
+          careerGoals: profile.careerGoals,
+        });
+        this.recordStandaloneEmbedding(userId, result.embeddingUsage, { source: 'backfill' });
+      } catch (err) {
+        this.logger.warn(`Backfill persona for ${userId} failed`, err);
+      }
     }
   }
 }

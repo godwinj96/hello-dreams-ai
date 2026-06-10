@@ -7,6 +7,7 @@ import { Resume } from '../../resume-builder/entities/resume.entity';
 import { ResumeData } from '../../resume-builder/entities/resume-data.entity';
 import { Document } from '../entities/document.entity';
 import { ProfessionalProfileService } from '../../professional-profile/professional-profile.service';
+import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
 
 export interface RelevantContext {
   content: string;
@@ -94,10 +95,18 @@ export class UserContextService {
     query: string,
     limit: number = 10,
     minSimilarity: number = 0.5,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<RelevantContext[]> {
     try {
-      // Generate embedding for query
       const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+      if (costAccumulator) {
+        costAccumulator.addEmbedding({
+          provider: 'openai',
+          model: queryEmbedding.model,
+          promptTokens: queryEmbedding.usage.promptTokens,
+          totalTokens: queryEmbedding.usage.totalTokens,
+        });
+      }
 
       // Get all user embeddings
       const userEmbeddings = await this.embeddingRepository.find({
@@ -147,12 +156,14 @@ export class UserContextService {
   async extractRelevantSkills(
     userId: string,
     jobDescription: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<string[]> {
     const relevantContext = await this.getRelevantContext(
       userId,
       jobDescription,
       5,
       0.6,
+      costAccumulator,
     );
 
     const skills: Set<string> = new Set();
@@ -184,12 +195,14 @@ export class UserContextService {
   async extractRelevantExperience(
     userId: string,
     jobDescription: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<string[]> {
     const relevantContext = await this.getRelevantContext(
       userId,
       jobDescription,
       5,
       0.6,
+      costAccumulator,
     );
 
     const experiences: string[] = [];
@@ -244,6 +257,7 @@ export class UserContextService {
   async buildComprehensiveContext(
     userId: string,
     jobDescription?: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<string> {
     const parts: string[] = [];
 
@@ -316,6 +330,7 @@ export class UserContextService {
         jobDescription,
         10,
         0.5,
+        costAccumulator,
       );
       if (relevantContext.length > 0) {
         parts.push('\n=== RELEVANT CONTEXT FROM PAST DOCUMENTS ===');

@@ -9,6 +9,8 @@ import { MessageRole } from '../../resume-builder/enums/message-role.enum';
 import { PromptInjectionGuardService } from '../../shared/services/prompt-injection-guard.service';
 import { UserContextService } from './user-context.service';
 import { ProfessionalProfileService } from '../../professional-profile/professional-profile.service';
+import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
+import { openAIChatAndTrack } from '../../shared/utils/ai-usage.helpers';
 
 export interface CoverLetterSections {
   header: {
@@ -77,19 +79,24 @@ export class CoverLetterGeneratorService {
     jobDescription?: string,
     targetJobTitle?: string,
     targetCompany?: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<CoverLetterSections> {
     try {
       // Parse job description if provided (sanitize first)
       let parsedJobDescription: ParsedJobDescription | null = null;
       if (jobDescription) {
         const sanitizedJobDescription = this.promptInjectionGuard.sanitizeJobDescription(jobDescription);
-        parsedJobDescription = await this.jobDescriptionParser.parseJobDescription(sanitizedJobDescription);
+        parsedJobDescription = await this.jobDescriptionParser.parseJobDescription(
+          sanitizedJobDescription,
+          costAccumulator,
+        );
       }
 
       // Get comprehensive context from all user data
       const comprehensiveContext = await this.userContextService.buildComprehensiveContext(
         userId,
         jobDescription,
+        costAccumulator,
       );
 
       // Get user's resume data (latest resume) - still needed for structured data
@@ -105,8 +112,8 @@ export class CoverLetterGeneratorService {
       // Semantically extract the best-matched skills and experience from ALL past content
       const [semanticSkills, semanticExperience] = jobDescription
         ? await Promise.all([
-            this.userContextService.extractRelevantSkills(userId, jobDescription),
-            this.userContextService.extractRelevantExperience(userId, jobDescription),
+            this.userContextService.extractRelevantSkills(userId, jobDescription, costAccumulator),
+            this.userContextService.extractRelevantExperience(userId, jobDescription, costAccumulator),
           ])
         : [[], []];
 
@@ -120,6 +127,7 @@ export class CoverLetterGeneratorService {
         basicInfo,
         semanticSkills,
         semanticExperience,
+        costAccumulator,
       );
     } catch (error) {
       this.logger.error('Error generating cover letter sections', error);
@@ -162,6 +170,7 @@ export class CoverLetterGeneratorService {
     basicInfo: Record<string, any> = {},
     semanticSkills: string[] = [],
     semanticExperience: string[] = [],
+    costAccumulator?: AiCostAccumulator,
   ): Promise<CoverLetterSections> {
     // Extract key achievements from all resumes
     const achievements = this.extractAchievementsFromAllResumes(allResumes || (resumeData ? [resumeData] : []));
@@ -198,6 +207,7 @@ export class CoverLetterGeneratorService {
       targetCompany || parsedJobDescription?.companyName || 'your organization',
       experience.length,
       comprehensiveContext,
+      costAccumulator,
     );
 
     // Generate core paragraph — prefer resume achievements, supplement with semantically
@@ -209,6 +219,7 @@ export class CoverLetterGeneratorService {
       coreAchievements,
       parsedJobDescription?.keyResponsibilities || [],
       comprehensiveContext,
+      costAccumulator,
     );
 
     // Generate skills match paragraph
@@ -216,17 +227,20 @@ export class CoverLetterGeneratorService {
       topSkills,
       parsedJobDescription?.requiredSkills || [],
       parsedJobDescription?.requiredTools || [],
+      costAccumulator,
     );
 
     // Generate cultural fit paragraph
     const culturalFit = await this.generateCulturalFitParagraph(
       targetCompany || parsedJobDescription?.companyName,
       comprehensiveContext,
+      costAccumulator,
     );
 
     // Generate closing paragraph
     const closing = await this.generateClosingParagraph(
       parsedJobDescription?.toneStyle || 'formal',
+      costAccumulator,
     );
 
     // Generate signature
@@ -299,6 +313,7 @@ export class CoverLetterGeneratorService {
     companyName: string,
     yearsExperience: number,
     comprehensiveContext?: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<string> {
     const contextSection = comprehensiveContext
       ? `\n\nAdditional context about the candidate:\n${comprehensiveContext.substring(0, 2500)}${comprehensiveContext.length > 2500 ? '...' : ''}`
@@ -315,10 +330,14 @@ The opening should:
 
 Write only the opening paragraph (2-3 sentences). Use confident, professional language.`;
 
-    const response = await this.openAIService.chat([
-      { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
-      { role: MessageRole.User, content: prompt },
-    ]);
+    const response = await openAIChatAndTrack(
+      this.openAIService,
+      [
+        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        { role: MessageRole.User, content: prompt },
+      ],
+      costAccumulator,
+    );
 
     return response.trim();
   }
@@ -330,6 +349,7 @@ Write only the opening paragraph (2-3 sentences). Use confident, professional la
     achievements: string[],
     jobResponsibilities: string[],
     comprehensiveContext?: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<string> {
     if (achievements.length === 0) {
       return 'I bring a strong track record of delivering impactful results and driving success in challenging environments.';
@@ -348,10 +368,14 @@ ${jobResponsibilities.length > 0 ? `\nKey job responsibilities to align with:\n$
 
 Write 1-2 sentences per achievement. Keep it confident and executive-level, not soft. Focus on measurable impact. Match the candidate's communication style from their persona.`;
 
-    const response = await this.openAIService.chat([
-      { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
-      { role: MessageRole.User, content: prompt },
-    ]);
+    const response = await openAIChatAndTrack(
+      this.openAIService,
+      [
+        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        { role: MessageRole.User, content: prompt },
+      ],
+      costAccumulator,
+    );
 
     return response.trim();
   }
@@ -363,6 +387,7 @@ Write 1-2 sentences per achievement. Keep it confident and executive-level, not 
     candidateSkills: string[],
     requiredSkills: string[],
     requiredTools: string[],
+    costAccumulator?: AiCostAccumulator,
   ): Promise<string> {
     const matchingSkills = candidateSkills.filter(skill =>
       requiredSkills.some(req => req.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(req.toLowerCase()))
@@ -380,10 +405,14 @@ ${requiredTools.length > 0 ? `Required tools: ${requiredTools.slice(0, 5).join('
 
 Mention 3-5 matching skills/tools in a natural way.`;
 
-    const response = await this.openAIService.chat([
-      { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
-      { role: MessageRole.User, content: prompt },
-    ]);
+    const response = await openAIChatAndTrack(
+      this.openAIService,
+      [
+        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        { role: MessageRole.User, content: prompt },
+      ],
+      costAccumulator,
+    );
 
     return response.trim();
   }
@@ -394,16 +423,21 @@ Mention 3-5 matching skills/tools in a natural way.`;
   private async generateCulturalFitParagraph(
     companyName?: string,
     comprehensiveContext?: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<string> {
     const contextSection = comprehensiveContext
       ? `\n\nCandidate's professional persona and values:\n${comprehensiveContext.substring(0, 1500)}${comprehensiveContext.length > 1500 ? '...' : ''}`
       : '';
     const prompt = `Write 1 sentence about why the candidate is excited about ${companyName || 'this opportunity'} and what excites them about the mission/company. Keep it brief and authentic. Ground it in the candidate's actual values and professional persona.${contextSection}`;
 
-    const response = await this.openAIService.chat([
-      { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
-      { role: MessageRole.User, content: prompt },
-    ]);
+    const response = await openAIChatAndTrack(
+      this.openAIService,
+      [
+        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        { role: MessageRole.User, content: prompt },
+      ],
+      costAccumulator,
+    );
 
     return response.trim();
   }
@@ -411,7 +445,10 @@ Mention 3-5 matching skills/tools in a natural way.`;
   /**
    * Generate closing paragraph
    */
-  private async generateClosingParagraph(toneStyle: string): Promise<string> {
+  private async generateClosingParagraph(
+    toneStyle: string,
+    costAccumulator?: AiCostAccumulator,
+  ): Promise<string> {
     const prompt = `Write a strong closing paragraph for a cover letter. The tone should be ${toneStyle}. 
 
 The closing should:
@@ -422,10 +459,14 @@ The closing should:
 
 Write only the closing paragraph.`;
 
-    const response = await this.openAIService.chat([
-      { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
-      { role: MessageRole.User, content: prompt },
-    ]);
+    const response = await openAIChatAndTrack(
+      this.openAIService,
+      [
+        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        { role: MessageRole.User, content: prompt },
+      ],
+      costAccumulator,
+    );
 
     return response.trim();
   }

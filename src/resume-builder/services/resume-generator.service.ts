@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { AiChatService, ChatMessage } from './ai-chat.service';
 import { MessageRole } from '../enums/message-role.enum';
 import { buildJsonOnlyInstruction, parseJsonObject } from '../../shared/utils/json-llm.util';
+import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
 
 // Regex that matches bracket-style placeholder text, e.g. [Email Address], [Phone Number]
 const PLACEHOLDER_RE = /^\[.+\]$/;
@@ -98,7 +99,10 @@ export class ResumeGeneratorService {
    * Generate a resume based on conversation messages
    * This will ask the AI to generate the final resume using all collected information
    */
-  async generateResume(messages: ChatMessage[]): Promise<ResumeJson> {
+  async generateResume(
+    messages: ChatMessage[],
+    costAccumulator?: AiCostAccumulator,
+  ): Promise<ResumeJson> {
     try {
       const resumeSchemaDescription = `
 Top-level JSON object with these keys:
@@ -170,8 +174,17 @@ All sections are objects; subsections are nested objects/arrays.`;
         },
       ];
 
-      const resumeContent = await this.aiChatService.chat(messagesWithPrompt, 0.3);
-      const parsed = parseJsonObject<ResumeJson>(resumeContent);
+      const chatResult = await this.aiChatService.chatWithUsage(messagesWithPrompt, 0.3);
+      if (costAccumulator) {
+        costAccumulator.addChat({
+          operation: 'chat',
+          provider: chatResult.provider,
+          model: chatResult.model,
+          usage: chatResult.usage,
+          estimated: chatResult.provider !== 'openai',
+        });
+      }
+      const parsed = parseJsonObject<ResumeJson>(chatResult.content);
 
       if (!parsed.ok || !parsed.data) {
         throw new BadRequestException(parsed.error || 'Model did not return valid JSON.');

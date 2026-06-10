@@ -7,6 +7,7 @@ import { CoverLetterGeneratorService } from './cover-letter-generator.service';
 import { JobDescriptionParserService } from './job-description-parser.service';
 import { buildJsonOnlyInstruction, parseJsonObject } from '../../shared/utils/json-llm.util';
 import { UserContextService } from './user-context.service';
+import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
 
 export interface StructuredDocumentJson {
   documentType: DocumentType | string;
@@ -55,6 +56,7 @@ export class DocumentGeneratorService {
     targetJobTitle?: string,
     targetCompany?: string,
     jobDescription?: string,
+    costAccumulator?: AiCostAccumulator,
   ): Promise<StructuredDocumentJson> {
     try {
       // For cover letters, use the structured sections generator to avoid
@@ -66,6 +68,7 @@ export class DocumentGeneratorService {
           jobDescription,
           targetJobTitle,
           targetCompany,
+          costAccumulator,
         );
         return {
           documentType,
@@ -123,7 +126,17 @@ export class DocumentGeneratorService {
       ];
 
       // Get the AI response (the generated document)
-      const documentContent = await this.aiChatService.chat(messagesWithPrompt);
+      const draftResult = await this.aiChatService.chatWithUsage(messagesWithPrompt);
+      if (costAccumulator) {
+        costAccumulator.addChat({
+          operation: 'chat',
+          provider: draftResult.provider,
+          model: draftResult.model,
+          usage: draftResult.usage,
+          estimated: draftResult.provider !== 'openai',
+        });
+      }
+      const documentContent = draftResult.content;
 
       const schemaDescription = `
 Top-level JSON object:
@@ -155,7 +168,7 @@ Return ONLY JSON.`;
       };
 
       const instruction = buildJsonOnlyInstruction(schemaDescription, example);
-      const structuredResponse = await this.aiChatService.chat([
+      const structuredResult = await this.aiChatService.chatWithUsage([
         { role: MessageRole.System, content: instruction },
         ...messagesWithPrompt,
         {
@@ -163,6 +176,16 @@ Return ONLY JSON.`;
           content: 'Return the document as JSON only using the schema.',
         },
       ]);
+      if (costAccumulator) {
+        costAccumulator.addChat({
+          operation: 'chat',
+          provider: structuredResult.provider,
+          model: structuredResult.model,
+          usage: structuredResult.usage,
+          estimated: structuredResult.provider !== 'openai',
+        });
+      }
+      const structuredResponse = structuredResult.content;
 
       const parsed = parseJsonObject<StructuredDocumentJson>(structuredResponse);
       if (!parsed.ok || !parsed.data) {

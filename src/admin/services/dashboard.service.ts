@@ -197,10 +197,37 @@ export class DashboardService {
     const totalCostUsd = readRawNumber(result, 'totalCostUsd');
     const totalCostNgn = readRawNumber(result, 'totalCostNgn');
 
+    const moduleRows = await this.usageTrackingRepository
+      .createQueryBuilder('usage')
+      .select('usage.module', 'module')
+      .addSelect('COALESCE(SUM(usage.costUsd), 0)', 'costUsd')
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .andWhere('usage.costUsd > 0')
+      .groupBy('usage.module')
+      .getRawMany();
+
+    const moduleMap = moduleRows.reduce(
+      (acc, row) => {
+        acc[row.module] = readRawNumber(row, 'costUsd');
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+
     return {
       totalTokensUsed,
       totalCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
       totalCostNgn: Math.round(totalCostNgn * 100) / 100,
+      costByModule: {
+        resumeBuilder: moduleMap['resume-builder'] ?? 0,
+        careerProfile: moduleMap['career-profile'] ?? 0,
+        documentGenerator: moduleMap['document-generator'] ?? 0,
+        personaBuilder: moduleMap['persona-builder'] ?? 0,
+        linkedinOptimization: moduleMap['linkedin-optimization'] ?? 0,
+        headshotGenerator: moduleMap['headshot-generator'] ?? 0,
+        jobApplication: moduleMap['job-application'] ?? 0,
+        shared: moduleMap['shared'] ?? 0,
+      },
     };
   }
 

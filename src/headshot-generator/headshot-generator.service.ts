@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { HeadshotGeneration, HeadshotStatus, HeadshotStyle, HeadshotPersonaType } from './entities/headshot-generation.entity';
 import { HeadshotGenerationService } from './services/headshot-generation.service';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
-import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 
 @Injectable()
@@ -16,7 +16,7 @@ export class HeadshotGeneratorService {
     private headshotGenerationRepository: Repository<HeadshotGeneration>,
     private headshotGenerationService: HeadshotGenerationService,
     private professionalProfileService: ProfessionalProfileService,
-    private usageTrackingService: UsageTrackingService,
+    private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
   ) {}
 
@@ -66,7 +66,7 @@ export class HeadshotGeneratorService {
 
       try {
         // Generate headshots
-        const generatedUrls = await this.headshotGenerationService.generateHeadshots(
+        const generationResult = await this.headshotGenerationService.generateHeadshots(
           originalImageUrl,
           style,
           finalPersonaType,
@@ -74,8 +74,7 @@ export class HeadshotGeneratorService {
           saved.id,
         );
 
-        // Update generation with results
-        saved.generatedImages = generatedUrls;
+        saved.generatedImages = generationResult.urls;
         saved.status = HeadshotStatus.Completed;
 
         const completed = await this.headshotGenerationRepository.save(saved);
@@ -87,14 +86,25 @@ export class HeadshotGeneratorService {
           this.logger.warn('Could not mark headshot section as complete', err);
         }
 
-        // Track headshot generation
-        this.usageTrackingService
-          .trackAction(userId, 'headshots_generated', 'headshot-generator', {
+        const costAccumulator = this.aiCostTrackingService.createAccumulator();
+        costAccumulator.addImage({
+          provider: 'openai',
+          model: generationResult.model,
+          imageCount: generationResult.imageCount,
+          size: generationResult.size,
+          quality: generationResult.quality,
+        });
+        this.aiCostTrackingService.recordFromAccumulator(
+          userId,
+          'headshots_generated',
+          'headshot-generator',
+          costAccumulator,
+          {
             generationId: completed.id,
             style,
             personaType: finalPersonaType,
-          })
-          .catch((err) => console.error('Failed to track headshot generation:', err));
+          },
+        );
         this.dashboardEventService.emitFeatureUsed(userId, 'headshot-generator', 'headshots_generated');
 
         return completed;

@@ -10,6 +10,8 @@ import { AiChatService } from './services/ai-chat.service';
 import { ResumeGeneratorService } from './services/resume-generator.service';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
+import { AiCostAccumulator } from '../shared/utils/ai-cost-accumulator';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 import { ConfigService } from '@nestjs/config';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
@@ -20,6 +22,7 @@ import { MessageRole } from './enums/message-role.enum';
 describe('ResumeBuilderService sendMessage', () => {
   let service: ResumeBuilderService;
   let capturedMessages: unknown[] = [];
+  let recordFromAccumulator: jest.Mock;
 
   const conversationId = 'conv-1';
   const userId = 'user-1';
@@ -36,6 +39,7 @@ describe('ResumeBuilderService sendMessage', () => {
 
   beforeEach(async () => {
     capturedMessages = [];
+    recordFromAccumulator = jest.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -102,6 +106,14 @@ describe('ResumeBuilderService sendMessage', () => {
           provide: UsageTrackingService,
           useValue: {
             trackUsageWithCosts: jest.fn().mockResolvedValue(undefined),
+            trackAction: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: AiCostTrackingService,
+          useValue: {
+            createAccumulator: jest.fn(() => new AiCostAccumulator(1500)),
+            recordFromAccumulator,
           },
         },
         {
@@ -142,5 +154,7 @@ describe('ResumeBuilderService sendMessage', () => {
 
     expect(userMessages.length).toBeGreaterThan(0);
     expect(userMessages[userMessages.length - 1].content).toBe(newContent);
+    expect(recordFromAccumulator).toHaveBeenCalledTimes(1);
+    expect(recordFromAccumulator.mock.calls[0][1]).toBe('message_sent');
   });
 });

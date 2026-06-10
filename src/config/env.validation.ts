@@ -62,6 +62,15 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   CAREERJET_API_KEY: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  NGN_TO_USD_RATE: number;
+
+  @IsOptional()
+  @IsString()
+  OPENAI_IMAGE_QUALITY: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {

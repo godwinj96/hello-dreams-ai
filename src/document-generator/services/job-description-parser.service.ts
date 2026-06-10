@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OpenAIService } from '../../shared/services/openai.service';
+import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
+import { addExtractionUsageToAccumulator } from '../../shared/utils/ai-usage.helpers';
 
 export interface ParsedJobDescription {
   jobTitle: string;
@@ -23,7 +25,10 @@ export class JobDescriptionParserService {
   /**
    * Parse job description and extract structured data
    */
-  async parseJobDescription(jobDescriptionText: string): Promise<ParsedJobDescription> {
+  async parseJobDescription(
+    jobDescriptionText: string,
+    costAccumulator?: AiCostAccumulator,
+  ): Promise<ParsedJobDescription> {
     try {
       const schema = {
         jobTitle: 'job title',
@@ -59,22 +64,25 @@ Be thorough and accurate.`;
         systemPrompt,
       );
 
-      if (!extracted) {
+      addExtractionUsageToAccumulator(costAccumulator, extracted);
+
+      if (!extracted?.data) {
         // Fallback parsing using regex patterns
         return this.fallbackParse(jobDescriptionText);
       }
 
+      const data = extracted.data;
       return {
-        jobTitle: extracted.jobTitle || '',
-        companyName: extracted.companyName || '',
-        requiredSkills: extracted.requiredSkills || [],
-        requiredTools: extracted.requiredTools || [],
-        keyResponsibilities: extracted.keyResponsibilities || [],
-        preferredExperience: extracted.preferredExperience || '',
-        toneStyle: this.normalizeToneStyle(extracted.toneStyle) || 'formal',
-        industry: extracted.industry,
-        location: extracted.location,
-        salary: extracted.salary,
+        jobTitle: data.jobTitle || '',
+        companyName: data.companyName || '',
+        requiredSkills: data.requiredSkills || [],
+        requiredTools: data.requiredTools || [],
+        keyResponsibilities: data.keyResponsibilities || [],
+        preferredExperience: data.preferredExperience || '',
+        toneStyle: this.normalizeToneStyle(data.toneStyle) || 'formal',
+        industry: data.industry,
+        location: data.location,
+        salary: data.salary,
       };
     } catch (error) {
       this.logger.error('Error parsing job description', error);

@@ -159,7 +159,7 @@ Be thorough and accurate. Only extract information that is clearly stated in the
         systemPrompt,
       );
 
-      if (!extracted) {
+      if (!extracted?.data) {
         // Fallback: return empty structure
         return {
           pastJobTitles: [],
@@ -170,12 +170,13 @@ Be thorough and accurate. Only extract information that is clearly stated in the
         };
       }
 
+      const data = extracted.data;
       return {
-        pastJobTitles: extracted.pastJobTitles || [],
-        experienceLevel: extracted.experienceLevel || 'entry-level',
-        industries: extracted.industries || [],
-        keywords: extracted.keywords || [],
-        workHistory: extracted.workHistory || [],
+        pastJobTitles: data.pastJobTitles || [],
+        experienceLevel: data.experienceLevel || 'entry-level',
+        industries: data.industries || [],
+        keywords: data.keywords || [],
+        workHistory: data.workHistory || [],
       };
     } catch (error) {
       this.logger.error('Error extracting structured data from CV', error);

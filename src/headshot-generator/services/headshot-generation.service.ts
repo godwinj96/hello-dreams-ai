@@ -21,24 +21,36 @@ export class HeadshotGenerationService {
     personaType: HeadshotPersonaType,
     userId: string,
     generationId: string,
-  ): Promise<string[]> {
+  ): Promise<{
+    urls: string[];
+    imageCount: number;
+    model: string;
+    size: string;
+    quality: 'low' | 'medium' | 'high';
+  }> {
     try {
-      const { buffers, provider } =
+      const generationResult =
         await this.imageGenerationService.generateHeadshots(
           originalImageUrl,
           style,
           personaType,
         );
 
-      this.logger.log(`Headshots generated using provider: ${provider}`);
+      this.logger.log(`Headshots generated using provider: ${generationResult.provider}`);
 
       const generatedImageUrls = await this.uploadGeneratedImages(
-        buffers,
+        generationResult.buffers,
         userId,
         generationId,
       );
 
-      return generatedImageUrls;
+      return {
+        urls: generatedImageUrls,
+        imageCount: generationResult.imageCount,
+        model: generationResult.model,
+        size: generationResult.size,
+        quality: generationResult.quality,
+      };
     } catch (error) {
       this.logger.error('Error generating headshots', error);
       throw error;

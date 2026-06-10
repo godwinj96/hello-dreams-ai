@@ -162,7 +162,15 @@ export class OpenAIService {
     text: string,
     schema: Record<string, any>,
     systemPrompt?: string,
-  ): Promise<any> {
+  ): Promise<{
+    data: any;
+    usage: {
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    };
+    model: string;
+  } | null> {
     if (!this.openai) {
       throw new Error('OpenAI API not configured');
     }
@@ -181,13 +189,17 @@ export class OpenAIService {
         },
       ];
 
-      const response = await this.chat(messages, this.defaultChatModel, 0.3);
+      const result = await this.chatWithUsage(messages, this.defaultChatModel, 0.3);
       
       // Try to parse JSON from response
       try {
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        const jsonMatch = result.content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
+          return {
+            data: JSON.parse(jsonMatch[0]),
+            usage: result.usage,
+            model: result.model,
+          };
         }
       } catch (parseError) {
         this.logger.warn('Failed to parse JSON from OpenAI response', parseError);

@@ -26,8 +26,8 @@ import {
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
 import { PaginationQueryDto, PaginationMetaDto, PaginatedResponseDto } from './dto/pagination.dto';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
+import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
-import { calculateCost } from '../shared/utils/cost-calculator.util';
 import { buildChatHistoryAfterUserMessage } from '../shared/utils/chat-history.util';
 import { ConfigService } from '@nestjs/config';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
@@ -54,6 +54,7 @@ export class ResumeBuilderService implements OnModuleInit {
     private resumeGeneratorService: ResumeGeneratorService,
     private professionalProfileService: ProfessionalProfileService,
     private usageTrackingService: UsageTrackingService,
+    private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
     private configService: ConfigService,
     private contextIndexerService: ContextIndexerService,
@@ -345,10 +346,17 @@ export class ResumeBuilderService implements OnModuleInit {
     // This surfaces relevant work experience or onboarding details even if mentioned in a
     // different module (e.g. career profile conversation), making the AI feel intuitive.
     let semanticContextBlock = '';
+    const costAccumulator = this.aiCostTrackingService.createAccumulator();
     try {
       if (this.embeddingService.isEmbeddingsAvailable()) {
         const latestUserMessage = sendDto.content;
         const queryEmbedding = await this.embeddingService.generateEmbedding(latestUserMessage);
+        costAccumulator.addEmbedding({
+          provider: 'openai',
+          model: queryEmbedding.model,
+          promptTokens: queryEmbedding.usage.promptTokens,
+          totalTokens: queryEmbedding.usage.totalTokens,
+        });
         const allEmbeddings = await this.embeddingRepository.find({ where: { userId } });
 
         if (allEmbeddings.length > 0) {
@@ -423,40 +431,27 @@ export class ResumeBuilderService implements OnModuleInit {
       }
     }
 
-    // Track usage with costs
     if (usageData) {
-      const ngnToUsdRate = this.configService.get<number>('NGN_TO_USD_RATE', 1500);
-      const costCalculation = calculateCost(
-        usageData.model,
-        {
-          promptTokens: usageData.usage.promptTokens,
-          completionTokens: usageData.usage.completionTokens,
-          totalTokens: usageData.usage.totalTokens,
-        },
-        ngnToUsdRate,
-      );
+      costAccumulator.addChat({
+        operation: 'chat',
+        provider: usageData.provider as 'openai' | 'huggingface' | 'ollama',
+        model: usageData.model,
+        usage: usageData.usage,
+        estimated: usageData.provider !== 'openai',
+      });
+    }
 
-      this.usageTrackingService
-        .trackUsageWithCosts(
-          userId,
-          'message_sent',
-          'resume-builder',
-          costCalculation.tokensUsed,
-          costCalculation.costUsd,
-          costCalculation.costNgn,
-          {
-            conversationId,
-            model: usageData.model,
-            provider: usageData.provider,
-          },
-        )
-        .catch((err) => console.error('Failed to track usage:', err));
+    if (!costAccumulator.isEmpty()) {
+      this.aiCostTrackingService.recordFromAccumulator(
+        userId,
+        'message_sent',
+        'resume-builder',
+        costAccumulator,
+        { conversationId },
+      );
     } else {
-      // Fallback to old tracking if usage data not available
       this.usageTrackingService
-        .trackAction(userId, 'message_sent', 'resume-builder', {
-          conversationId,
-        })
+        .trackAction(userId, 'message_sent', 'resume-builder', { conversationId })
         .catch((err) => console.error('Failed to track message:', err));
     }
     this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'message_sent');
@@ -525,46 +520,50 @@ Please use this persona to inform the tone and style of the resume.`;
     });
 
     if (existingResume) {
-      // Generate new version
+      const costAccumulator = this.aiCostTrackingService.createAccumulator();
       const resumeContent = await this.resumeGeneratorService.generateResume(
         messagesWithContext,
+        costAccumulator,
       );
       existingResume.content = resumeContent;
       existingResume.version += 1;
       const updated = await this.resumeRepository.save(existingResume);
-      // Index resume embedding — fire-and-forget so a slow/failing API doesn't block the response
-      this.contextIndexerService.indexResume(updated.id, userId, updated.content).catch((err) =>
-        this.logger.warn('Resume re-index failed (non-fatal)', err),
-      );
-      // Sync resume_data for cross-module access
+      try {
+        const indexResult = await this.contextIndexerService.indexResume(
+          updated.id,
+          userId,
+          updated.content,
+        );
+        if (indexResult.embeddingUsage) {
+          costAccumulator.addEmbedding({
+            provider: 'openai',
+            model: indexResult.embeddingUsage.model,
+            promptTokens: indexResult.embeddingUsage.promptTokens,
+            totalTokens: indexResult.embeddingUsage.totalTokens,
+          });
+        }
+      } catch (err) {
+        this.logger.warn('Resume re-index failed (non-fatal)', err);
+      }
       this.extractAndSaveResumeData(updated.id, resumeContent).catch((err) =>
         this.logger.warn('Resume data sync failed (non-fatal)', err),
       );
-      
-      // Track resume generation
-      this.usageTrackingService
-        .trackAction(userId, 'resume_generated', 'resume-builder', {
-          conversationId,
-          version: updated.version,
-        })
-        .catch((err) => console.error('Failed to track resume generation:', err));
+
+      this.aiCostTrackingService.recordFromAccumulator(
+        userId,
+        'resume_generated',
+        'resume-builder',
+        costAccumulator,
+        { conversationId, version: updated.version },
+      );
       this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'resume_generated');
-      
+
       return this.mapResumeToDto(updated);
-    } else {
-      // Create new resume
-      const result = await this.generateAndSaveResume(conversationId, userId, messagesWithContext);
-      
-      // Track resume generation
-      this.usageTrackingService
-        .trackAction(userId, 'resume_generated', 'resume-builder', {
-          conversationId,
-        })
-        .catch((err) => console.error('Failed to track resume generation:', err));
-      this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'resume_generated');
-      
-      return result;
     }
+
+    const result = await this.generateAndSaveResume(conversationId, userId, messagesWithContext);
+    this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'resume_generated');
+    return result;
   }
 
   async getResume(
@@ -694,8 +693,10 @@ Please use this persona to inform the tone and style of the resume.`;
     userId: string,
     chatMessages: ChatMessage[],
   ): Promise<ResumeResponseDto> {
+    const costAccumulator = this.aiCostTrackingService.createAccumulator();
     const resumeContent = await this.resumeGeneratorService.generateResume(
       chatMessages,
+      costAccumulator,
     );
 
     const resume = this.resumeRepository.create({
@@ -706,8 +707,30 @@ Please use this persona to inform the tone and style of the resume.`;
     } as Partial<Resume>);
 
     const saved = await this.resumeRepository.save(resume);
-    this.contextIndexerService.indexResume(saved.id, userId, saved.content).catch((err) =>
-      this.logger.warn('Resume index failed (non-fatal)', err),
+    try {
+      const indexResult = await this.contextIndexerService.indexResume(
+        saved.id,
+        userId,
+        saved.content,
+      );
+      if (indexResult.embeddingUsage) {
+        costAccumulator.addEmbedding({
+          provider: 'openai',
+          model: indexResult.embeddingUsage.model,
+          promptTokens: indexResult.embeddingUsage.promptTokens,
+          totalTokens: indexResult.embeddingUsage.totalTokens,
+        });
+      }
+    } catch (err) {
+      this.logger.warn('Resume index failed (non-fatal)', err);
+    }
+
+    this.aiCostTrackingService.recordFromAccumulator(
+      userId,
+      'resume_generated',
+      'resume-builder',
+      costAccumulator,
+      { conversationId, version: 1 },
     );
     // Sync resume_data for cross-module access
     this.extractAndSaveResumeData(saved.id, resumeContent).catch((err) =>
@@ -780,6 +803,28 @@ Please use this persona to inform the tone and style of the resume.`;
   /**
    * Backfill embeddings for user resumes and persona if missing
    */
+  private recordStandaloneEmbedding(
+    userId: string,
+    usage?: { model: string; promptTokens: number; totalTokens: number },
+    extra?: Record<string, unknown>,
+  ): void {
+    if (!usage) return;
+    const acc = this.aiCostTrackingService.createAccumulator();
+    acc.addEmbedding({
+      provider: 'openai',
+      model: usage.model,
+      promptTokens: usage.promptTokens,
+      totalTokens: usage.totalTokens,
+    });
+    this.aiCostTrackingService.recordStandalone(
+      userId,
+      'ai_embedding',
+      'resume-builder',
+      acc,
+      extra,
+    );
+  }
+
   private async backfillUserEmbeddings(userId: string): Promise<void> {
     // Backfill resumes
     const resumes = await this.resumeRepository.find({
@@ -796,9 +841,15 @@ Please use this persona to inform the tone and style of the resume.`;
           where: { resumeId: resume.id },
         });
         const content = resumeData ?? resume.content;
-        await this.contextIndexerService.indexResume(resume.id, userId, content).catch((err) =>
-          this.logger.warn(`Backfill resume ${resume.id} failed`, err),
-        );
+        try {
+          const result = await this.contextIndexerService.indexResume(resume.id, userId, content);
+          this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
+            resumeId: resume.id,
+            source: 'backfill',
+          });
+        } catch (err) {
+          this.logger.warn(`Backfill resume ${resume.id} failed`, err);
+        }
       }
     }
 
@@ -825,11 +876,18 @@ Please use this persona to inform the tone and style of the resume.`;
         });
       }
 
-      await this.contextIndexerService.indexPersona(userId, {
-        persona: profile.persona,
-        personaData: profile.personaData,
-        careerGoals: profile.careerGoals,
-      }).catch((err) => this.logger.warn(`Backfill persona for ${userId} failed`, err));
+      try {
+        const result = await this.contextIndexerService.indexPersona(userId, {
+          persona: profile.persona,
+          personaData: profile.personaData,
+          careerGoals: profile.careerGoals,
+        });
+        this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
+          source: 'backfill',
+        });
+      } catch (err) {
+        this.logger.warn(`Backfill persona for ${userId} failed`, err);
+      }
     }
   }
 

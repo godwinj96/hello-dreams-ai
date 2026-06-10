@@ -114,7 +114,7 @@ export class EmbeddingRetryService {
             ? await indexer.indexResume(resumeId, userId, resumeData)
             : await indexer.indexResume(resumeId, userId, resume.content);
 
-          if (result !== null) {
+          if (result.record !== null) {
             this.pendingKeys.delete(key);
             this.logger.log('Resume embedding reindex succeeded', {
               resumeId,
@@ -172,7 +172,7 @@ export class EmbeddingRetryService {
             doc.content,
           );
 
-          if (result !== null) {
+          if (result.record !== null) {
             this.pendingKeys.delete(key);
             this.logger.log('Document embedding reindex succeeded', {
               documentId,
@@ -226,7 +226,7 @@ export class EmbeddingRetryService {
             careerGoals: profile.careerGoals,
           });
 
-          if (result !== null) {
+          if (result.record !== null) {
             this.pendingKeys.delete(key);
             this.logger.log('Persona/profile embedding reindex succeeded', {
               userId,
