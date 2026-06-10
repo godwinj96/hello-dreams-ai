@@ -31,6 +31,7 @@ import { CareerProfileConfirmationDto } from './dto/confirmation.dto';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 import { calculateCost } from '../shared/utils/cost-calculator.util';
+import { buildChatHistoryAfterUserMessage } from '../shared/utils/chat-history.util';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -190,12 +191,12 @@ export class CareerProfileService {
       sendDto.content,
     );
 
-    // Get conversation history from JSONB column and append the current user message
-    // so the AI and extraction both see the full context including what was just sent.
-    const chatMessages: ChatMessage[] = [
-      ...(conversation.messagesJsonb ?? []) as ChatMessage[],
-      { role: MessageRole.User, content: sendDto.content },
-    ];
+    // In-memory messagesJsonb is stale after addMessage(); append current user message.
+    const chatMessages = buildChatHistoryAfterUserMessage(
+      conversation.messagesJsonb,
+      sendDto.content,
+      MessageRole.User,
+    ) as ChatMessage[];
 
     // Load existing profile so the AI skips questions already answered
     const existingProfile = await this.professionalProfileService.getProfile(userId);

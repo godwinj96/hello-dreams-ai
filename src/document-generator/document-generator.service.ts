@@ -26,6 +26,7 @@ import { UpdateDocumentDto, PatchDocumentDto } from './dto/update-document.dto';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 import { calculateCost } from '../shared/utils/cost-calculator.util';
+import { buildChatHistoryAfterUserMessage } from '../shared/utils/chat-history.util';
 import { ConfigService } from '@nestjs/config';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
 import { UserContextEmbedding } from '../shared/entities/user-context-embedding.entity';
@@ -197,8 +198,12 @@ export class DocumentGeneratorServiceMain {
       sendDto.content,
     );
 
-    // Get conversation history from JSONB column (single query, no join)
-    const chatMessages: ChatMessage[] = (conversation.messagesJsonb ?? []) as ChatMessage[];
+    // In-memory messagesJsonb is stale after addMessage(); append current user message.
+    const chatMessages = buildChatHistoryAfterUserMessage(
+      conversation.messagesJsonb,
+      sendDto.content,
+      MessageRole.User,
+    ) as ChatMessage[];
 
     // Get professional profile for context
     const profile = await this.professionalProfileService.getProfileForGeneration(userId);

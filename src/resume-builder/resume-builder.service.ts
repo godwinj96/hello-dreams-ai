@@ -28,6 +28,7 @@ import { PaginationQueryDto, PaginationMetaDto, PaginatedResponseDto } from './d
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 import { calculateCost } from '../shared/utils/cost-calculator.util';
+import { buildChatHistoryAfterUserMessage } from '../shared/utils/chat-history.util';
 import { ConfigService } from '@nestjs/config';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
 import { EmbeddingService } from '../shared/services/embedding.service';
@@ -294,8 +295,12 @@ export class ResumeBuilderService implements OnModuleInit {
       sendDto.content,
     );
 
-    // Get conversation history from JSONB column (single query, no join)
-    const chatMessages: ChatMessage[] = (conversation.messagesJsonb ?? []) as ChatMessage[];
+    // In-memory messagesJsonb is stale after addMessage(); append current user message.
+    const chatMessages = buildChatHistoryAfterUserMessage(
+      conversation.messagesJsonb,
+      sendDto.content,
+      MessageRole.User,
+    ) as ChatMessage[];
 
     // Build profile context block from the user's professional profile
     let profileContextBlock = '';

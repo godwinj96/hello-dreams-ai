@@ -14,6 +14,7 @@ import {
 import { TimeRangeDto, TimeRange } from '../dto/time-range.dto';
 import { UsageMetricsDto } from '../dto/usage-metrics.dto';
 import { UsageTrackingService } from './usage-tracking.service';
+import { readRawNumber } from '../../shared/utils/raw-query.util';
 
 @Injectable()
 export class DashboardService {
@@ -192,10 +193,14 @@ export class DashboardService {
       })
       .getRawOne();
 
+    const totalTokensUsed = readRawNumber(result, 'totalTokensUsed');
+    const totalCostUsd = readRawNumber(result, 'totalCostUsd');
+    const totalCostNgn = readRawNumber(result, 'totalCostNgn');
+
     return {
-      totalTokensUsed: Number(result?.totalTokensUsed || 0),
-      totalCostUsd: Math.round(Number(result?.totalCostUsd || 0) * 1_000_000) / 1_000_000,
-      totalCostNgn: Math.round(Number(result?.totalCostNgn || 0) * 100) / 100,
+      totalTokensUsed,
+      totalCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
+      totalCostNgn: Math.round(totalCostNgn * 100) / 100,
     };
   }
 
