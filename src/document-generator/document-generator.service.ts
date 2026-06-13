@@ -22,6 +22,7 @@ import {
   DocumentResponseDto,
 } from './dto/document-response.dto';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
+import { getDocumentGeneratorWelcome } from '../shared/utils/chat-welcome-messages.util';
 import { UpdateDocumentDto, PatchDocumentDto } from './dto/update-document.dto';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
 import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
@@ -92,17 +93,11 @@ export class DocumentGeneratorServiceMain {
         .catch((err) => this.logger.warn('Context pre-warm failed (non-fatal)', err));
     }
 
-    // Send initial greeting from AI based on document type
-    let initialGreeting: string;
-    if (createDto.documentType === DocumentType.CoverLetter) {
-      if (createDto.jobDescription) {
-        initialGreeting = `Hi ${name}, I see you've provided a job description. I'll analyze it and use your past resumes/documents to tailor a cover letter. I’ll start with what I know, but tell me if there are specific achievements you want highlighted.`;
-      } else {
-        initialGreeting = `Hi ${name}, I’ll draft a strong cover letter using what I already know about you. If you share the job description, I can make it even sharper. What role and company are you targeting?`;
-      }
-    } else {
-      initialGreeting = this.getInitialGreeting(createDto.documentType);
-    }
+    const initialGreeting = getDocumentGeneratorWelcome({
+      documentType: createDto.documentType,
+      name,
+      hasJobDescription: !!createDto.jobDescription,
+    });
     await this.addMessage(
       savedConversation.id,
       MessageRole.Assistant,
@@ -118,7 +113,7 @@ export class DocumentGeneratorServiceMain {
       .catch((err) => console.error('Failed to track conversation creation:', err));
     this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'conversation_created');
 
-    return this.mapConversationToDto(savedConversation);
+    return this.findOneConversation(savedConversation.id, userId);
   }
 
   async findAllConversations(userId: string): Promise<DocumentConversationResponseDto[]> {
@@ -138,6 +133,7 @@ export class DocumentGeneratorServiceMain {
     const conversation = await this.conversationRepository.findOne({
       where: { id },
       relations: ['messages'],
+      order: { messages: { createdAt: 'ASC' } },
     });
 
     if (!conversation) {
@@ -595,14 +591,6 @@ export class DocumentGeneratorServiceMain {
     );
   }
 
-  private getInitialGreeting(documentType: DocumentType): string {
-    if (documentType === DocumentType.CoverLetter) {
-      return "Hello! I'm here to help you create a compelling cover letter. Let's start by gathering some information. What position are you applying for, and which company is it with?";
-    } else {
-      return "Hello! I'm here to help you craft a powerful personal statement. Let's start by understanding what you'd like to highlight. What is the purpose of this personal statement (e.g., graduate school application, scholarship, program admission)?";
-    }
-  }
-
   private getSystemPrompt(documentType: DocumentType, profile: any): string {
     const personaContext = profile.persona
       ? `The user's professional persona:
@@ -697,7 +685,12 @@ Guidelines for the statement itself:
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
       messages: conversation.messages
-        ? conversation.messages.map((msg) => this.mapMessageToDto(msg))
+        ? [...conversation.messages]
+            .sort(
+              (a, b) =>
+                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            )
+            .map((msg) => this.mapMessageToDto(msg))
         : undefined,
     };
   }

@@ -29,6 +29,7 @@ import { UsageTrackingService } from '../admin/services/usage-tracking.service';
 import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
 import { buildChatHistoryAfterUserMessage } from '../shared/utils/chat-history.util';
+import { getResumeBuilderWelcome } from '../shared/utils/chat-welcome-messages.util';
 import { ConfigService } from '@nestjs/config';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
 import { EmbeddingService } from '../shared/services/embedding.service';
@@ -106,13 +107,10 @@ export class ResumeBuilderService implements OnModuleInit {
       profile.basicInfo.phone
     );
 
-    // Send initial greeting from AI
-    let initialGreeting: string;
-    if (hasBasicInfo && profile.basicInfo.name) {
-      initialGreeting = `Great! I see we already have some of your basic information. Let's build your resume. Since we already have your name (${profile.basicInfo.name}), let's start with your work experience. Tell me about your most recent role. What was your title, company, and when did you start and end?`;
-    } else {
-      initialGreeting = "Great! Let's begin. What is your full name as you want it shown on your CV?";
-    }
+    const initialGreeting = getResumeBuilderWelcome({
+      hasBasicInfo: !!(hasBasicInfo && profile.basicInfo.name),
+      name: profile.basicInfo?.name,
+    });
 
     await this.addMessage(
       savedConversation.id,
@@ -128,7 +126,7 @@ export class ResumeBuilderService implements OnModuleInit {
       .catch((err) => console.error('Failed to track conversation creation:', err));
     this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'conversation_created');
 
-    return this.mapConversationToDto(savedConversation);
+    return this.findOneConversation(savedConversation.id, userId);
   }
 
   async findAllConversations(

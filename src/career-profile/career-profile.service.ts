@@ -23,6 +23,10 @@ import {
 } from './dto/career-profile-response.dto';
 import { CareerProfileExtractorService } from './services/career-profile-extractor.service';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
+import {
+  getCareerProfileWelcome,
+  getCvUploadConfirmation,
+} from '../shared/utils/chat-welcome-messages.util';
 import { ContextIndexerService } from '../shared/services/context-indexer.service';
 import { VoiceService } from '../shared/services/voice.service';
 import { SupabaseStorageService } from '../shared/services/supabase-storage.service';
@@ -74,8 +78,7 @@ export class CareerProfileService {
       await this.professionalProfileService.setInteractionMode(userId, createDto.interactionMode);
     }
 
-    // Send initial greeting from AI
-    const initialGreeting = "Hi Dreamer! I'm here to help you discover and articulate your career goals and professional profile. Let's start by understanding what you're looking for in your next role. What job title or type of position are you targeting?";
+    const initialGreeting = getCareerProfileWelcome();
     await this.addMessage(
       savedConversation.id,
       MessageRole.Assistant,
@@ -90,7 +93,7 @@ export class CareerProfileService {
       .catch((err) => console.error('Failed to track conversation creation:', err));
     this.dashboardEventService.emitFeatureUsed(userId, 'career-profile', 'conversation_created');
 
-    return this.mapConversationToDto(savedConversation);
+    return this.findOneConversation(savedConversation.id, userId);
   }
 
   async findAllConversations(userId: string): Promise<CareerConversationResponseDto[]> {
@@ -110,6 +113,7 @@ export class CareerProfileService {
     const conversation = await this.conversationRepository.findOne({
       where: { id },
       relations: ['messages'],
+      order: { messages: { createdAt: 'ASC' } },
     });
 
     if (!conversation) {
@@ -329,7 +333,7 @@ export class CareerProfileService {
     await this.addMessage(
       conversationId,
       MessageRole.Assistant,
-      "Great! I've uploaded and analyzed your CV. I can see your experience and will use this to personalize your journey. Is there anything else you'd like me to know about your career journey?",
+      getCvUploadConfirmation(),
     );
 
     return { cvUploadUrl, cvMetadata };
@@ -628,7 +632,12 @@ Only add this line once, when you genuinely have sufficient information to build
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
       messages: conversation.messages
-        ? conversation.messages.map((msg) => this.mapMessageToDto(msg))
+        ? [...conversation.messages]
+            .sort(
+              (a, b) =>
+                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            )
+            .map((msg) => this.mapMessageToDto(msg))
         : undefined,
     };
   }
