@@ -43,7 +43,9 @@ export class JSearchAdapterService {
           query,
           page: filters.page ?? 1,
           num_pages: 1,
-          ...(filters.jobType && { employment_types: JOB_TYPE_MAP[filters.jobType] }),
+          ...(filters.jobType && {
+            employment_types: JOB_TYPE_MAP[filters.jobType],
+          }),
           ...(filters.remote && { remote_jobs_only: 'true' }),
           date_posted: 'month',
         },
@@ -66,7 +68,7 @@ export class JSearchAdapterService {
       company: job.employer_name ?? null,
       location: job.job_city
         ? `${job.job_city}${job.job_country ? ', ' + job.job_country : ''}`
-        : job.job_country ?? null,
+        : (job.job_country ?? null),
       description: job.job_description ?? null,
       salary:
         job.job_min_salary && job.job_max_salary
@@ -74,7 +76,8 @@ export class JSearchAdapterService {
           : null,
       jobType: job.job_employment_type ?? null,
       skills: job.job_required_skills ?? [],
-      experienceLevel: job.job_required_experience?.required_experience_in_months
+      experienceLevel: job.job_required_experience
+        ?.required_experience_in_months
         ? job.job_required_experience.required_experience_in_months < 24
           ? 'entry'
           : job.job_required_experience.required_experience_in_months < 60

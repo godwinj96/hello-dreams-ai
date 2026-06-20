@@ -1,4 +1,10 @@
-import { IsEmail, IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Role } from '../enums/role.enum';
 
@@ -40,5 +46,3 @@ export class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 }
-
-

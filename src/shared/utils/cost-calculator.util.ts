@@ -111,7 +111,8 @@ export function calculateEmbeddingCost(
 ): CostCalculation {
   const key = model.toLowerCase();
   const pricePerMillion =
-    EMBEDDING_MODEL_PRICING[key] ?? EMBEDDING_MODEL_PRICING['text-embedding-3-small'];
+    EMBEDDING_MODEL_PRICING[key] ??
+    EMBEDDING_MODEL_PRICING['text-embedding-3-small'];
   const costUsd = roundUsd((promptTokens / 1_000_000) * pricePerMillion);
 
   return {
@@ -159,7 +160,9 @@ export function calculateTtsCost(
   charCount: number,
   ngnToUsdRate: number = DEFAULT_NGN_TO_USD_RATE,
 ): CostCalculation {
-  const costUsd = roundUsd((charCount / 1_000_000) * TTS_COST_PER_MILLION_CHARS);
+  const costUsd = roundUsd(
+    (charCount / 1_000_000) * TTS_COST_PER_MILLION_CHARS,
+  );
 
   return {
     costUsd,

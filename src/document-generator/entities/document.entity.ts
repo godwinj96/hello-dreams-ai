@@ -27,11 +27,9 @@ export class Document {
   @Column()
   conversationId: string;
 
-  @OneToOne(
-    () => DocumentConversation,
-    (conversation) => conversation,
-    { onDelete: 'CASCADE' },
-  )
+  @OneToOne(() => DocumentConversation, (conversation) => conversation, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'conversationId' })
   conversation: DocumentConversation;
 
@@ -59,4 +57,3 @@ export class Document {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

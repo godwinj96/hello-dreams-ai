@@ -14,7 +14,10 @@ import { SendCareerMessageDto } from './dto/send-message.dto';
 import { UpdateCareerConversationDto } from './dto/update-conversation.dto';
 import { ConversationStatus } from '../resume-builder/enums/conversation-status.enum';
 import { MessageRole } from '../resume-builder/enums/message-role.enum';
-import { AiChatService, ChatMessage } from '../resume-builder/services/ai-chat.service';
+import {
+  AiChatService,
+  ChatMessage,
+} from '../resume-builder/services/ai-chat.service';
 import { OpenAIService } from '../shared/services/openai.service';
 import {
   CareerConversationResponseDto,
@@ -71,11 +74,15 @@ export class CareerProfileService {
       status: ConversationStatus.Active,
     } as Partial<CareerConversation>);
 
-    const savedConversation = await this.conversationRepository.save(conversation);
+    const savedConversation =
+      await this.conversationRepository.save(conversation);
 
     // Set interaction mode if provided
     if (createDto.interactionMode) {
-      await this.professionalProfileService.setInteractionMode(userId, createDto.interactionMode);
+      await this.professionalProfileService.setInteractionMode(
+        userId,
+        createDto.interactionMode,
+      );
     }
 
     const initialGreeting = getCareerProfileWelcome();
@@ -90,13 +97,21 @@ export class CareerProfileService {
       .trackAction(userId, 'conversation_created', 'career-profile', {
         conversationId: savedConversation.id,
       })
-      .catch((err) => console.error('Failed to track conversation creation:', err));
-    this.dashboardEventService.emitFeatureUsed(userId, 'career-profile', 'conversation_created');
+      .catch((err) =>
+        console.error('Failed to track conversation creation:', err),
+      );
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'career-profile',
+      'conversation_created',
+    );
 
     return this.findOneConversation(savedConversation.id, userId);
   }
 
-  async findAllConversations(userId: string): Promise<CareerConversationResponseDto[]> {
+  async findAllConversations(
+    userId: string,
+  ): Promise<CareerConversationResponseDto[]> {
     const conversations = await this.conversationRepository.find({
       where: { userId },
       order: { updatedAt: 'DESC' },
@@ -121,7 +136,9 @@ export class CareerProfileService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     return this.mapConversationToDto(conversation);
@@ -141,7 +158,9 @@ export class CareerProfileService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     Object.assign(conversation, updateDto);
@@ -160,7 +179,9 @@ export class CareerProfileService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     await this.conversationRepository.remove(conversation);
@@ -182,11 +203,15 @@ export class CareerProfileService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     if (conversation.status === ConversationStatus.Archived) {
-      throw new ForbiddenException('Cannot send messages to archived conversation');
+      throw new ForbiddenException(
+        'Cannot send messages to archived conversation',
+      );
     }
 
     // Save user message
@@ -204,7 +229,8 @@ export class CareerProfileService {
     ) as ChatMessage[];
 
     // Load existing profile so the AI skips questions already answered
-    const existingProfile = await this.professionalProfileService.getProfile(userId);
+    const existingProfile =
+      await this.professionalProfileService.getProfile(userId);
     const systemPrompt = this.getCareerProfileSystemPrompt(existingProfile);
     const messagesWithSystem: ChatMessage[] = [
       { role: MessageRole.System, content: systemPrompt },
@@ -213,7 +239,8 @@ export class CareerProfileService {
 
     // Get AI response with usage tracking
     let aiResponse: string;
-    let usageData: { usage: any; model: string; provider: string } | null = null;
+    let usageData: { usage: any; model: string; provider: string } | null =
+      null;
     try {
       const result = await this.aiChatService.chatWithUsage(messagesWithSystem);
       aiResponse = result.content;
@@ -278,11 +305,18 @@ export class CareerProfileService {
         { conversationId },
       );
     } else {
-      this.usageTrackingService
-        .trackAction(userId, 'message_sent', 'career-profile', { conversationId })
-        .catch((err) => console.error('Failed to track message:', err));
+      this.aiCostTrackingService.recordFlatUsage(
+        userId,
+        'message_sent',
+        'career-profile',
+        { conversationId },
+      );
     }
-    this.dashboardEventService.emitFeatureUsed(userId, 'career-profile', 'message_sent');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'career-profile',
+      'message_sent',
+    );
 
     return this.mapMessageToDto(assistantMessage);
   }
@@ -303,7 +337,9 @@ export class CareerProfileService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     // Validate file type
@@ -334,6 +370,13 @@ export class CareerProfileService {
       conversationId,
       MessageRole.Assistant,
       getCvUploadConfirmation(),
+    );
+
+    this.aiCostTrackingService.recordFlatUsage(
+      userId,
+      'cv_upload',
+      'career-profile',
+      { conversationId },
     );
 
     return { cvUploadUrl, cvMetadata };
@@ -382,7 +425,9 @@ export class CareerProfileService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     const profile = await this.professionalProfileService.getProfile(userId);
@@ -436,7 +481,15 @@ export class CareerProfileService {
 
       if (extracted?.data) {
         const data = extracted.data;
-        if (data.name || data.email || data.phone || data.country || data.state || data.city || data.linkedIn) {
+        if (
+          data.name ||
+          data.email ||
+          data.phone ||
+          data.country ||
+          data.state ||
+          data.city ||
+          data.linkedIn
+        ) {
           await this.professionalProfileService.updateBasicInfo(userId, {
             name: data.name,
             email: data.email,
@@ -456,15 +509,23 @@ export class CareerProfileService {
           });
         }
 
-        if (data.workExperience || data.education || data.skills || data.background) {
+        if (
+          data.workExperience ||
+          data.education ||
+          data.skills ||
+          data.background
+        ) {
           await this.professionalProfileService.updateExtractedData(userId, {
             background: data.background,
             experience: data.workExperience,
             education: data.education,
             skills: data.skills
-              ? (Array.isArray(data.skills)
-                  ? data.skills.map((s: any) => String(s).trim()).filter(Boolean)
-                  : String(data.skills).split(',').map((s: string) => s.trim()).filter(Boolean))
+              ? Array.isArray(data.skills)
+                ? data.skills.map((s: any) => String(s).trim()).filter(Boolean)
+                : String(data.skills)
+                    .split(',')
+                    .map((s: string) => s.trim())
+                    .filter(Boolean)
               : undefined,
           });
         }
@@ -493,14 +554,20 @@ export class CareerProfileService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     // Get professional profile
-    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+    const profile =
+      await this.professionalProfileService.getProfileForGeneration(userId);
 
     // Mark the career profile section as complete — user has generated their summary
-    await this.professionalProfileService.markSectionComplete(userId, 'careerProfile');
+    await this.professionalProfileService.markSectionComplete(
+      userId,
+      'careerProfile',
+    );
 
     return {
       conversationId,
@@ -513,11 +580,21 @@ export class CareerProfileService {
     };
   }
 
-  async completeConversation(conversationId: string, userId: string): Promise<void> {
-    const conversation = await this.conversationRepository.findOne({ where: { id: conversationId } });
-    if (!conversation) throw new NotFoundException(`Conversation ${conversationId} not found`);
-    if (conversation.userId !== userId) throw new ForbiddenException('Access denied');
-    await this.professionalProfileService.markSectionComplete(userId, 'careerProfile');
+  async completeConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<void> {
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: conversationId },
+    });
+    if (!conversation)
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    if (conversation.userId !== userId)
+      throw new ForbiddenException('Access denied');
+    await this.professionalProfileService.markSectionComplete(
+      userId,
+      'careerProfile',
+    );
   }
 
   private async addMessage(
@@ -561,27 +638,35 @@ export class CareerProfileService {
 
     if (existingProfile?.targetJob) {
       const t = existingProfile.targetJob;
-      if (t.targetJobTitle) knownParts.push(`Target job title: ${t.targetJobTitle}`);
+      if (t.targetJobTitle)
+        knownParts.push(`Target job title: ${t.targetJobTitle}`);
       if (t.careerGoal) knownParts.push(`Career goal: ${t.careerGoal}`);
-      if (t.salaryExpectation) knownParts.push(`Salary expectation: ${t.salaryExpectation}`);
+      if (t.salaryExpectation)
+        knownParts.push(`Salary expectation: ${t.salaryExpectation}`);
     }
 
     if (existingProfile?.careerGoals) {
       const g = existingProfile.careerGoals;
-      if (g.careerAspirations) knownParts.push(`Career aspirations: ${g.careerAspirations}`);
-      if (g.targetRoles?.length) knownParts.push(`Target roles: ${g.targetRoles.join(', ')}`);
-      if (g.targetIndustries?.length) knownParts.push(`Target industries: ${g.targetIndustries.join(', ')}`);
+      if (g.careerAspirations)
+        knownParts.push(`Career aspirations: ${g.careerAspirations}`);
+      if (g.targetRoles?.length)
+        knownParts.push(`Target roles: ${g.targetRoles.join(', ')}`);
+      if (g.targetIndustries?.length)
+        knownParts.push(`Target industries: ${g.targetIndustries.join(', ')}`);
     }
 
     if (existingProfile?.cvMetadata) {
       const cv = existingProfile.cvMetadata;
-      if (cv.experienceLevel) knownParts.push(`Experience level: ${cv.experienceLevel}`);
-      if (cv.pastJobTitles?.length) knownParts.push(`Past job titles: ${cv.pastJobTitles.join(', ')}`);
+      if (cv.experienceLevel)
+        knownParts.push(`Experience level: ${cv.experienceLevel}`);
+      if (cv.pastJobTitles?.length)
+        knownParts.push(`Past job titles: ${cv.pastJobTitles.join(', ')}`);
     }
 
-    const knownSection = knownParts.length > 0
-      ? `\n\n--- ALREADY COLLECTED (do NOT ask for these again) ---\n${knownParts.join('\n')}\n--- END KNOWN INFO ---\n`
-      : '';
+    const knownSection =
+      knownParts.length > 0
+        ? `\n\n--- ALREADY COLLECTED (do NOT ask for these again) ---\n${knownParts.join('\n')}\n--- END KNOWN INFO ---\n`
+        : '';
 
     return `You are a career discovery assistant helping users understand their career goals, aspirations, and professional profile.
 ${knownSection}
@@ -635,7 +720,8 @@ Only add this line once, when you genuinely have sufficient information to build
         ? [...conversation.messages]
             .sort(
               (a, b) =>
-                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+                new Date(a.createdAt).getTime() -
+                new Date(b.createdAt).getTime(),
             )
             .map((msg) => this.mapMessageToDto(msg))
         : undefined,
@@ -651,4 +737,3 @@ Only add this line once, when you genuinely have sufficient information to build
     };
   }
 }
-

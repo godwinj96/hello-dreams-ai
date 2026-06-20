@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OpenAIService } from '../../shared/services/openai.service';
-import { JobDescriptionParserService, ParsedJobDescription } from './job-description-parser.service';
+import {
+  JobDescriptionParserService,
+  ParsedJobDescription,
+} from './job-description-parser.service';
 import { ResumeData } from '../../resume-builder/entities/resume-data.entity';
 import { Resume } from '../../resume-builder/entities/resume.entity';
 import { MessageRole } from '../../resume-builder/enums/message-role.enum';
@@ -61,7 +64,12 @@ export class CoverLetterGeneratorService {
     targetCompany?: string,
   ): Promise<string> {
     try {
-      const sections = await this.generateCoverLetterSections(userId, jobDescription, targetJobTitle, targetCompany);
+      const sections = await this.generateCoverLetterSections(
+        userId,
+        jobDescription,
+        targetJobTitle,
+        targetCompany,
+      );
       return this.formatCoverLetter(sections);
     } catch (error) {
       this.logger.error('Error generating cover letter', error);
@@ -85,35 +93,49 @@ export class CoverLetterGeneratorService {
       // Parse job description if provided (sanitize first)
       let parsedJobDescription: ParsedJobDescription | null = null;
       if (jobDescription) {
-        const sanitizedJobDescription = this.promptInjectionGuard.sanitizeJobDescription(jobDescription);
-        parsedJobDescription = await this.jobDescriptionParser.parseJobDescription(
-          sanitizedJobDescription,
-          costAccumulator,
-        );
+        const sanitizedJobDescription =
+          this.promptInjectionGuard.sanitizeJobDescription(jobDescription);
+        parsedJobDescription =
+          await this.jobDescriptionParser.parseJobDescription(
+            sanitizedJobDescription,
+            costAccumulator,
+          );
       }
 
       // Get comprehensive context from all user data
-      const comprehensiveContext = await this.userContextService.buildComprehensiveContext(
-        userId,
-        jobDescription,
-        costAccumulator,
-      );
+      const comprehensiveContext =
+        await this.userContextService.buildComprehensiveContext(
+          userId,
+          jobDescription,
+          costAccumulator,
+        );
 
       // Get user's resume data (latest resume) - still needed for structured data
       const resumeData = await this.getLatestResumeData(userId);
 
       // Get all resumes for comprehensive skill/experience extraction
-      const allResumes = await this.userContextService.getAllUserResumes(userId);
+      const allResumes =
+        await this.userContextService.getAllUserResumes(userId);
 
       // Get basic info from professional profile — used as fallback when no resume exists yet
-      const profile = await this.professionalProfileService.getProfile(userId).catch(() => null);
+      const profile = await this.professionalProfileService
+        .getProfile(userId)
+        .catch(() => null);
       const basicInfo = profile?.basicInfo ?? {};
 
       // Semantically extract the best-matched skills and experience from ALL past content
       const [semanticSkills, semanticExperience] = jobDescription
         ? await Promise.all([
-            this.userContextService.extractRelevantSkills(userId, jobDescription, costAccumulator),
-            this.userContextService.extractRelevantExperience(userId, jobDescription, costAccumulator),
+            this.userContextService.extractRelevantSkills(
+              userId,
+              jobDescription,
+              costAccumulator,
+            ),
+            this.userContextService.extractRelevantExperience(
+              userId,
+              jobDescription,
+              costAccumulator,
+            ),
           ])
         : [[], []];
 
@@ -138,7 +160,9 @@ export class CoverLetterGeneratorService {
   /**
    * Get latest resume data for user
    */
-  private async getLatestResumeData(userId: string): Promise<ResumeData | null> {
+  private async getLatestResumeData(
+    userId: string,
+  ): Promise<ResumeData | null> {
     // Find latest resume for user
     const latestResume = await this.resumeRepository.findOne({
       where: { userId },
@@ -173,30 +197,37 @@ export class CoverLetterGeneratorService {
     costAccumulator?: AiCostAccumulator,
   ): Promise<CoverLetterSections> {
     // Extract key achievements from all resumes
-    const achievements = this.extractAchievementsFromAllResumes(allResumes || (resumeData ? [resumeData] : []));
+    const achievements = this.extractAchievementsFromAllResumes(
+      allResumes || (resumeData ? [resumeData] : []),
+    );
     // Merge resume-extracted skills with semantically matched skills from all past content.
     // Deduplicate so skills from onboarding conversations surface alongside resume skills.
-    const resumeSkills = this.extractTopSkillsFromAllResumes(allResumes || (resumeData ? [resumeData] : []));
+    const resumeSkills = this.extractTopSkillsFromAllResumes(
+      allResumes || (resumeData ? [resumeData] : []),
+    );
     const topSkills = [...new Set([...resumeSkills, ...semanticSkills])];
     const experience = resumeData?.workExperience || [];
 
     // Build header — resume contact info is preferred; fall back to ProfessionalProfile.basicInfo
     // so users who haven't built a resume yet still get their name/email in the cover letter.
     const profileLocation = [basicInfo.city, basicInfo.state, basicInfo.country]
-      .filter(Boolean).join(', ');
+      .filter(Boolean)
+      .join(', ');
     const header = {
       name: resumeData?.contactInfo?.fullName || basicInfo.name || 'Your Name',
       title: targetJobTitle || undefined,
       phone: resumeData?.contactInfo?.phone || basicInfo.phone || '',
       email: resumeData?.contactInfo?.email || basicInfo.email || '',
       linkedIn: resumeData?.contactInfo?.linkedIn || basicInfo.linkedIn,
-      location: resumeData?.contactInfo?.location || profileLocation || undefined,
+      location:
+        resumeData?.contactInfo?.location || profileLocation || undefined,
     };
 
     // Generate company address
     const companyAddress = {
       hiringManager: 'Hiring Manager',
-      companyName: targetCompany || parsedJobDescription?.companyName || '[Company Name]',
+      companyName:
+        targetCompany || parsedJobDescription?.companyName || '[Company Name]',
       location: parsedJobDescription?.location,
     };
 
@@ -212,9 +243,10 @@ export class CoverLetterGeneratorService {
 
     // Generate core paragraph — prefer resume achievements, supplement with semantically
     // matched experience snippets from onboarding conversations if achievements are sparse.
-    const coreAchievements = achievements.length > 0
-      ? achievements.slice(0, 3)
-      : semanticExperience.slice(0, 3);
+    const coreAchievements =
+      achievements.length > 0
+        ? achievements.slice(0, 3)
+        : semanticExperience.slice(0, 3);
     const core = await this.generateCoreParagraph(
       coreAchievements,
       parsedJobDescription?.keyResponsibilities || [],
@@ -295,9 +327,12 @@ export class CoverLetterGeneratorService {
 
     resumes.forEach((resume) => {
       if (resume.skills) {
-        if (resume.skills.technical) resume.skills.technical.forEach(s => skills.add(s));
-        if (resume.skills.tools) resume.skills.tools.forEach(s => skills.add(s));
-        if (resume.skills.soft) resume.skills.soft.forEach(s => skills.add(s));
+        if (resume.skills.technical)
+          resume.skills.technical.forEach((s) => skills.add(s));
+        if (resume.skills.tools)
+          resume.skills.tools.forEach((s) => skills.add(s));
+        if (resume.skills.soft)
+          resume.skills.soft.forEach((s) => skills.add(s));
       }
     });
 
@@ -333,7 +368,10 @@ Write only the opening paragraph (2-3 sentences). Use confident, professional la
     const response = await openAIChatAndTrack(
       this.openAIService,
       [
-        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        {
+          role: MessageRole.System,
+          content: 'You are a professional cover letter writer.',
+        },
         { role: MessageRole.User, content: prompt },
       ],
       costAccumulator,
@@ -371,7 +409,10 @@ Write 1-2 sentences per achievement. Keep it confident and executive-level, not 
     const response = await openAIChatAndTrack(
       this.openAIService,
       [
-        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        {
+          role: MessageRole.System,
+          content: 'You are a professional cover letter writer.',
+        },
         { role: MessageRole.User, content: prompt },
       ],
       costAccumulator,
@@ -389,8 +430,12 @@ Write 1-2 sentences per achievement. Keep it confident and executive-level, not 
     requiredTools: string[],
     costAccumulator?: AiCostAccumulator,
   ): Promise<string> {
-    const matchingSkills = candidateSkills.filter(skill =>
-      requiredSkills.some(req => req.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(req.toLowerCase()))
+    const matchingSkills = candidateSkills.filter((skill) =>
+      requiredSkills.some(
+        (req) =>
+          req.toLowerCase().includes(skill.toLowerCase()) ||
+          skill.toLowerCase().includes(req.toLowerCase()),
+      ),
     );
 
     if (matchingSkills.length === 0 && requiredSkills.length === 0) {
@@ -408,7 +453,10 @@ Mention 3-5 matching skills/tools in a natural way.`;
     const response = await openAIChatAndTrack(
       this.openAIService,
       [
-        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        {
+          role: MessageRole.System,
+          content: 'You are a professional cover letter writer.',
+        },
         { role: MessageRole.User, content: prompt },
       ],
       costAccumulator,
@@ -433,7 +481,10 @@ Mention 3-5 matching skills/tools in a natural way.`;
     const response = await openAIChatAndTrack(
       this.openAIService,
       [
-        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        {
+          role: MessageRole.System,
+          content: 'You are a professional cover letter writer.',
+        },
         { role: MessageRole.User, content: prompt },
       ],
       costAccumulator,
@@ -462,7 +513,10 @@ Write only the closing paragraph.`;
     const response = await openAIChatAndTrack(
       this.openAIService,
       [
-        { role: MessageRole.System, content: 'You are a professional cover letter writer.' },
+        {
+          role: MessageRole.System,
+          content: 'You are a professional cover letter writer.',
+        },
         { role: MessageRole.User, content: prompt },
       ],
       costAccumulator,
@@ -521,14 +575,3 @@ Write only the closing paragraph.`;
     return letter;
   }
 }
-
-
-
-
-
-
-
-
-
-
-

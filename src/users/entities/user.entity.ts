@@ -31,7 +31,7 @@ export class User {
   })
   role: Role;
 
-  @Column({nullable: true})
+  @Column({ nullable: true })
   avatar_url: string;
 
   @Column({ nullable: true, unique: true })
@@ -39,6 +39,21 @@ export class User {
 
   @Column({ default: true })
   isActive: boolean;
+
+  @Column({ default: false })
+  emailVerified: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  emailVerificationToken: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerificationExpires: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  passwordResetToken: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  passwordResetExpires: Date | null;
 
   @Column({ default: 0 })
   credits: number;
@@ -56,4 +71,3 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

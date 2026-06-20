@@ -61,11 +61,14 @@ export class PaymentsService {
 
     await this.paymentRepository.save(payment);
 
+    const callbackUrl = this.getPaymentsCallbackUrl();
+
     // Initialize Paystack transaction
     const paystackResponse = await this.paystackService.initializeTransaction({
       amount,
       email: user.email,
       currency,
+      callback_url: callbackUrl,
       metadata: {
         ...metadata,
         paymentId: payment.id,
@@ -96,12 +99,12 @@ export class PaymentsService {
       throw new NotFoundException('User not found');
     }
 
-    // Check if user already has an active subscription
+    // Check if user already has an active or pending subscription
     const existingSubscription = await this.subscriptionRepository.findOne({
-      where: {
-        userId,
-        status: SubscriptionStatus.Active,
-      },
+      where: [
+        { userId, status: SubscriptionStatus.Active },
+        { userId, status: SubscriptionStatus.Pending },
+      ],
     });
 
     if (existingSubscription) {
@@ -114,7 +117,6 @@ export class PaymentsService {
       throw new BadRequestException('Subscription plan not configured');
     }
 
-    // Calculate period dates
     const now = new Date();
     const periodEnd = new Date(now);
     if (billingCycle === BillingCycle.Monthly) {
@@ -123,32 +125,33 @@ export class PaymentsService {
       periodEnd.setFullYear(periodEnd.getFullYear() + 1);
     }
 
-    // Create subscription record
+    // Create subscription record — pending until Paystack webhook confirms payment
     const subscription = this.subscriptionRepository.create({
       userId,
       planId: planCode,
       billingCycle,
-      status: SubscriptionStatus.Active,
+      status: SubscriptionStatus.Pending,
       currentPeriodStart: now,
       currentPeriodEnd: periodEnd,
     });
 
     await this.subscriptionRepository.save(subscription);
 
-    // Initialize Paystack subscription
-    const paystackResponse = await this.paystackService.initializeSubscription({
-      plan: planCode,
+    const callbackUrl = this.getPaymentsCallbackUrl();
+
+    const paystackResponse = await this.paystackService.initializeTransaction({
       email: user.email,
+      plan: planCode,
+      callback_url: callbackUrl,
       metadata: {
         ...metadata,
         subscriptionId: subscription.id,
         userId,
+        billingCycle,
       },
     });
 
-    // Update subscription with Paystack codes
-    subscription.paystackSubscriptionCode = paystackResponse.data.subscription_code;
-    subscription.paystackCustomerCode = paystackResponse.data.customer_code;
+    subscription.paystackReference = paystackResponse.data.reference;
     await this.subscriptionRepository.save(subscription);
 
     return {
@@ -178,9 +181,8 @@ export class PaymentsService {
     }
 
     // Verify with Paystack
-    const verification = await this.paystackService.verifyTransaction(
-      paystackReference,
-    );
+    const verification =
+      await this.paystackService.verifyTransaction(paystackReference);
 
     if (verification.data.status !== 'success') {
       throw new BadRequestException('Payment verification failed');
@@ -251,7 +253,9 @@ export class PaymentsService {
     }
 
     // Update subscription period
-    subscription.currentPeriodStart = new Date(paystackData.current_period_start);
+    subscription.currentPeriodStart = new Date(
+      paystackData.current_period_start,
+    );
     subscription.currentPeriodEnd = new Date(paystackData.current_period_end);
     subscription.status =
       paystackData.status === 'active'
@@ -260,12 +264,11 @@ export class PaymentsService {
 
     await this.subscriptionRepository.save(subscription);
 
-    // Add credits for subscription renewal
-    const creditsPerSubscription = this.configService.get<number>(
-      'CREDITS_PER_SUBSCRIPTION',
-      10000,
-    );
-    await this.addCredits(subscription.userId, creditsPerSubscription);
+    if (subscription.status === SubscriptionStatus.Active) {
+      await this.userRepository.update(subscription.userId, {
+        subscriptionId: subscription.id,
+      });
+    }
 
     this.dashboardEventService.emitSubscriptionChanged(
       subscription.userId,
@@ -280,9 +283,169 @@ export class PaymentsService {
   }
 
   /**
+   * Activate subscription after successful Paystack checkout (verify or webhook).
+   */
+  async activateSubscription(
+    subscriptionId: string,
+    paystackData?: {
+      subscription_code?: string;
+      customer_code?: string;
+      current_period_start?: string | Date;
+      current_period_end?: string | Date;
+    },
+  ): Promise<Subscription> {
+    const subscription = await this.subscriptionRepository.findOne({
+      where: { id: subscriptionId },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    if (subscription.status === SubscriptionStatus.Active) {
+      return subscription;
+    }
+
+    subscription.status = SubscriptionStatus.Active;
+
+    if (paystackData?.subscription_code) {
+      subscription.paystackSubscriptionCode = paystackData.subscription_code;
+    }
+    if (paystackData?.customer_code) {
+      subscription.paystackCustomerCode = paystackData.customer_code;
+    }
+    if (paystackData?.current_period_start) {
+      subscription.currentPeriodStart = new Date(
+        paystackData.current_period_start,
+      );
+    }
+    if (paystackData?.current_period_end) {
+      subscription.currentPeriodEnd = new Date(paystackData.current_period_end);
+    }
+
+    await this.subscriptionRepository.save(subscription);
+
+    await this.userRepository.update(subscription.userId, {
+      subscriptionId: subscription.id,
+    });
+
+    this.dashboardEventService.emitSubscriptionChanged(
+      subscription.userId,
+      subscription.status,
+    );
+
+    this.logger.log(`Subscription ${subscriptionId} activated`);
+
+    return subscription;
+  }
+
+  /**
+   * Verify Paystack checkout reference and activate subscription or one-time payment.
+   */
+  async verifyCheckout(
+    userId: string,
+    reference: string,
+  ): Promise<{
+    status: 'success' | 'pending' | 'failed';
+    type: 'subscription' | 'payment' | 'unknown';
+    subscription?: Subscription;
+    payment?: Payment;
+  }> {
+    const verification =
+      await this.paystackService.verifyTransaction(reference);
+
+    const paystackStatus = verification.data.status;
+    const metadata = verification.data.metadata ?? {};
+
+    if (metadata.userId && metadata.userId !== userId) {
+      throw new BadRequestException('Payment does not belong to this user');
+    }
+
+    if (metadata.subscriptionId) {
+      const subscription = await this.subscriptionRepository.findOne({
+        where: { id: metadata.subscriptionId, userId },
+      });
+
+      if (!subscription) {
+        throw new NotFoundException('Subscription not found');
+      }
+
+      if (paystackStatus === 'success') {
+        const activated = await this.activateSubscription(subscription.id, {
+          subscription_code:
+            (metadata as any).subscription_code ??
+            (verification.data as any).subscription?.subscription_code,
+          customer_code: (verification.data as any).customer?.customer_code,
+        });
+        if (!activated.paystackReference) {
+          activated.paystackReference = reference;
+          await this.subscriptionRepository.save(activated);
+        }
+        return {
+          status: 'success',
+          type: 'subscription',
+          subscription: activated,
+        };
+      }
+
+      return {
+        status: paystackStatus === 'failed' ? 'failed' : 'pending',
+        type: 'subscription',
+        subscription,
+      };
+    }
+
+    const payment = await this.findPaymentByReference(reference);
+    if (payment && payment.userId === userId) {
+      if (paystackStatus === 'success' && payment.status !== PaymentStatus.Success) {
+        const processed = await this.processSuccessfulPayment(
+          payment.id,
+          reference,
+        );
+        return { status: 'success', type: 'payment', payment: processed };
+      }
+      return {
+        status:
+          payment.status === PaymentStatus.Success
+            ? 'success'
+            : paystackStatus === 'failed'
+              ? 'failed'
+              : 'pending',
+        type: 'payment',
+        payment,
+      };
+    }
+
+    return {
+      status: paystackStatus === 'success' ? 'success' : 'pending',
+      type: 'unknown',
+    };
+  }
+
+  async markSubscriptionPaymentFailed(subscriptionCode: string): Promise<void> {
+    const subscription = await this.subscriptionRepository.findOne({
+      where: { paystackSubscriptionCode: subscriptionCode },
+    });
+    if (!subscription) return;
+
+    subscription.status = SubscriptionStatus.Expired;
+    await this.subscriptionRepository.save(subscription);
+    await this.userRepository.update(subscription.userId, {
+      subscriptionId: null,
+    });
+    this.dashboardEventService.emitSubscriptionChanged(
+      subscription.userId,
+      subscription.status,
+    );
+  }
+
+  /**
    * Cancel subscription
    */
-  async cancelSubscription(userId: string, subscriptionId: string): Promise<void> {
+  async cancelSubscription(
+    userId: string,
+    subscriptionId: string,
+  ): Promise<void> {
     const subscription = await this.subscriptionRepository.findOne({
       where: { id: subscriptionId, userId },
     });
@@ -377,22 +540,40 @@ export class PaymentsService {
   /**
    * Find subscription by Paystack subscription code
    */
-  async findSubscriptionByCode(subscriptionCode: string): Promise<Subscription | null> {
+  async findSubscriptionByCode(
+    subscriptionCode: string,
+  ): Promise<Subscription | null> {
     return this.subscriptionRepository.findOne({
       where: { paystackSubscriptionCode: subscriptionCode },
     });
   }
 
   /**
-   * Get user's current subscription
+   * Active subscription only — used for Pro daily credit limits.
+   */
+  async getActiveUserSubscription(userId: string): Promise<Subscription | null> {
+    return this.subscriptionRepository.findOne({
+      where: { userId, status: SubscriptionStatus.Active },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Latest subscription including pending checkout — for account UI.
    */
   async getUserSubscription(userId: string): Promise<Subscription | null> {
     return this.subscriptionRepository.findOne({
-      where: {
-        userId,
-        status: SubscriptionStatus.Active,
-      },
+      where: [
+        { userId, status: SubscriptionStatus.Active },
+        { userId, status: SubscriptionStatus.Pending },
+      ],
+      order: { createdAt: 'DESC' },
     });
   }
-}
 
+  private getPaymentsCallbackUrl(): string | undefined {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    if (!frontendUrl) return undefined;
+    return `${frontendUrl.replace(/\/$/, '')}/payments/callback`;
+  }
+}

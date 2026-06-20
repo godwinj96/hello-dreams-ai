@@ -27,8 +27,12 @@ export class PersonaBuilderController {
   constructor(private readonly personaBuilderService: PersonaBuilderService) {}
 
   @Get('questions')
-  @ApiOperation({ summary: 'Get persona questions (managed on frontend)' })
-  @ApiResponse({ status: 200, description: 'List of questions (empty as questions are managed on frontend)', type: [QuestionDto] })
+  @ApiOperation({ summary: 'Get persona questionnaire with answer options' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of questions with options',
+    type: [QuestionDto],
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getQuestions(): Promise<QuestionDto[]> {
     return this.personaBuilderService.getQuestions();
@@ -55,47 +59,60 @@ export class PersonaBuilderController {
 
   @Post('generate')
   @UseGuards(CreditGuard)
-  @ApiOperation({ summary: 'Generate professional persona from submitted answers' })
-  @ApiResponse({ status: 201, description: 'Persona generated successfully', type: PersonaResponseDto })
+  @ApiOperation({
+    summary: 'Generate professional persona from submitted answers',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Persona generated successfully',
+    type: PersonaResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'No answers found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async generatePersona(
-    @Request() req,
-  ): Promise<PersonaResponseDto> {
+  async generatePersona(@Request() req): Promise<PersonaResponseDto> {
     return this.personaBuilderService.generatePersona(req.user.id);
   }
 
   @Get('persona')
   @ApiOperation({ summary: 'Get the generated professional persona' })
-  @ApiResponse({ status: 200, description: 'Persona details', type: PersonaResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Persona details',
+    type: PersonaResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Persona not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getPersona(
-    @Request() req,
-  ): Promise<PersonaResponseDto | null> {
+  async getPersona(@Request() req): Promise<PersonaResponseDto | null> {
     return this.personaBuilderService.getPersona(req.user.id);
   }
 
   @Post('apply')
-  @ApiOperation({ summary: 'Apply persona to profile (use persona in CV, cover letter, LinkedIn)' })
-  @ApiResponse({ status: 200, description: 'Persona applied successfully', type: PersonaResponseDto })
+  @ApiOperation({
+    summary:
+      'Apply persona to profile (use persona in CV, cover letter, LinkedIn)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Persona applied successfully',
+    type: PersonaResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Persona not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async applyPersonaToProfile(
-    @Request() req,
-  ): Promise<PersonaResponseDto> {
+  async applyPersonaToProfile(@Request() req): Promise<PersonaResponseDto> {
     return this.personaBuilderService.applyPersonaToProfile(req.user.id);
   }
 
   @Post('restart')
-  @ApiOperation({ summary: 'Restart persona questionnaire (clear answers and persona data)' })
-  @ApiResponse({ status: 200, description: 'Questionnaire restarted successfully' })
+  @ApiOperation({
+    summary: 'Restart persona questionnaire (clear answers and persona data)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Questionnaire restarted successfully',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async restartQuestionnaire(
-    @Request() req,
-  ): Promise<{ message: string }> {
+  async restartQuestionnaire(@Request() req): Promise<{ message: string }> {
     await this.personaBuilderService.restartQuestionnaire(req.user.id);
     return { message: 'Questionnaire restarted successfully' };
   }
 }
-

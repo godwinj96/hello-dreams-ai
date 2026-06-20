@@ -53,7 +53,11 @@ export class CareerProfileController {
     description:
       'Creates a new conversation for career profile discovery. **You must create a conversation before sending any messages.** After creation, use the returned conversation ID to send messages to `/career-profile/conversations/:id/messages`.',
   })
-  @ApiResponse({ status: 201, description: 'Conversation created successfully', type: CareerConversationResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Conversation created successfully',
+    type: CareerConversationResponseDto,
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: CreateCareerConversationDto })
   async createConversation(
@@ -64,8 +68,14 @@ export class CareerProfileController {
   }
 
   @Get('conversations')
-  @ApiOperation({ summary: 'Get all career profile conversations for the current user' })
-  @ApiResponse({ status: 200, description: 'List of conversations', type: [CareerConversationResponseDto] })
+  @ApiOperation({
+    summary: 'Get all career profile conversations for the current user',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of conversations',
+    type: [CareerConversationResponseDto],
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findAllConversations(
     @Request() req,
@@ -76,7 +86,11 @@ export class CareerProfileController {
   @Get('conversations/:id')
   @ApiOperation({ summary: 'Get a specific career profile conversation by ID' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 200, description: 'Conversation details', type: CareerConversationResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Conversation details',
+    type: CareerConversationResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findOneConversation(
@@ -89,7 +103,11 @@ export class CareerProfileController {
   @Put('conversations/:id')
   @ApiOperation({ summary: 'Update a career profile conversation' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 200, description: 'Conversation updated successfully', type: CareerConversationResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Conversation updated successfully',
+    type: CareerConversationResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: UpdateCareerConversationDto })
@@ -109,7 +127,10 @@ export class CareerProfileController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a career profile conversation' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 204, description: 'Conversation deleted successfully' })
+  @ApiResponse({
+    status: 204,
+    description: 'Conversation deleted successfully',
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async deleteConversation(
@@ -127,7 +148,11 @@ export class CareerProfileController {
       'Sends a message in an existing career profile conversation and receives an AI response. **Note:** You must create a conversation first using `POST /career-profile/conversations` before you can send messages.',
   })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 201, description: 'Message sent and AI response received', type: CareerMessageResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Message sent and AI response received',
+    type: CareerMessageResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiBody({ type: SendCareerMessageDto })
@@ -144,16 +169,25 @@ export class CareerProfileController {
   }
 
   @Get('conversations/:id/summary')
-  @ApiOperation({ summary: 'Get the extracted profile summary from a conversation' })
+  @ApiOperation({
+    summary: 'Get the extracted profile summary from a conversation',
+  })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 200, description: 'Profile summary', type: ProfileSummaryResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile summary',
+    type: ProfileSummaryResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfileSummary(
     @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
   ): Promise<ProfileSummaryResponseDto> {
-    return this.careerProfileService.getProfileSummary(conversationId, req.user.id);
+    return this.careerProfileService.getProfileSummary(
+      conversationId,
+      req.user.id,
+    );
   }
 
   @Post('conversations/:id/upload-cv')
@@ -223,7 +257,8 @@ file: [binary file data - PDF or DOCX]
   })
   @ApiResponse({
     status: 400,
-    description: 'Invalid file type or no file provided. Only PDF and DOCX files are supported.',
+    description:
+      'Invalid file type or no file provided. Only PDF and DOCX files are supported.',
     schema: {
       type: 'object',
       properties: {
@@ -237,7 +272,10 @@ file: [binary file data - PDF or DOCX]
     status: 404,
     description: 'Conversation not found - Invalid conversation ID',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async uploadCv(
     @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
@@ -246,7 +284,11 @@ file: [binary file data - PDF or DOCX]
     if (!file) {
       throw new BadRequestException('No file provided');
     }
-    return this.careerProfileService.uploadCv(conversationId, req.user.id, file);
+    return this.careerProfileService.uploadCv(
+      conversationId,
+      req.user.id,
+      file,
+    );
   }
 
   @Post('conversations/:id/voice-message')
@@ -306,7 +348,8 @@ audio: [binary audio file data - MP3, WAV, etc.]
         audio: {
           type: 'string',
           format: 'binary',
-          description: 'Audio file (MP3, WAV, or other supported audio formats)',
+          description:
+            'Audio file (MP3, WAV, or other supported audio formats)',
         },
       },
       required: ['audio'],
@@ -333,7 +376,10 @@ audio: [binary audio file data - MP3, WAV, etc.]
     status: 404,
     description: 'Conversation not found - Invalid conversation ID',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async sendVoiceMessage(
     @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
@@ -342,14 +388,21 @@ audio: [binary audio file data - MP3, WAV, etc.]
     if (!audioFile) {
       throw new BadRequestException('No audio file provided');
     }
-    return this.careerProfileService.sendVoiceMessage(conversationId, req.user.id, audioFile);
+    return this.careerProfileService.sendVoiceMessage(
+      conversationId,
+      req.user.id,
+      audioFile,
+    );
   }
 
   @Post('conversations/:id/complete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Mark career profile conversation as complete' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 204, description: 'Career profile marked as complete' })
+  @ApiResponse({
+    status: 204,
+    description: 'Career profile marked as complete',
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async completeConversation(
@@ -362,14 +415,20 @@ audio: [binary audio file data - MP3, WAV, etc.]
   @Get('conversations/:id/confirmation')
   @ApiOperation({ summary: 'Get confirmation summary of collected data' })
   @ApiParam({ name: 'id', description: 'Conversation ID' })
-  @ApiResponse({ status: 200, description: 'Confirmation data', type: CareerProfileConfirmationDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Confirmation data',
+    type: CareerProfileConfirmationDto,
+  })
   @ApiResponse({ status: 404, description: 'Conversation not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getConfirmation(
     @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
   ): Promise<CareerProfileConfirmationDto> {
-    return this.careerProfileService.getConfirmation(conversationId, req.user.id);
+    return this.careerProfileService.getConfirmation(
+      conversationId,
+      req.user.id,
+    );
   }
 }
-

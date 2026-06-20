@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { EmbeddingService, ContentType } from '../../shared/services/embedding.service';
+import {
+  EmbeddingService,
+  ContentType,
+} from '../../shared/services/embedding.service';
 import { UserContextEmbedding } from '../../shared/entities/user-context-embedding.entity';
 import { Resume } from '../../resume-builder/entities/resume.entity';
 import { ResumeData } from '../../resume-builder/entities/resume-data.entity';
@@ -55,7 +58,7 @@ export class UserContextService {
       ),
     );
 
-    return resumeDataList.filter((data) => data !== null) as ResumeData[];
+    return resumeDataList.filter((data) => data !== null);
   }
 
   /**
@@ -98,7 +101,8 @@ export class UserContextService {
     costAccumulator?: AiCostAccumulator,
   ): Promise<RelevantContext[]> {
     try {
-      const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+      const queryEmbedding =
+        await this.embeddingService.generateEmbedding(query);
       if (costAccumulator) {
         costAccumulator.addEmbedding({
           provider: 'openai',
@@ -232,7 +236,8 @@ export class UserContextService {
     patterns?: string[];
   }> {
     const documents = await this.getAllUserDocuments(userId);
-    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+    const profile =
+      await this.professionalProfileService.getProfileForGeneration(userId);
 
     // Extract writing style from persona if available
     const style: {
@@ -262,7 +267,8 @@ export class UserContextService {
     const parts: string[] = [];
 
     // Get professional profile (basic info, cv metadata, target job)
-    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+    const profile =
+      await this.professionalProfileService.getProfileForGeneration(userId);
 
     // Include basic contact info so downstream prompts have the user's name/email/phone
     if (profile.basicInfo && Object.keys(profile.basicInfo).length > 0) {
@@ -277,12 +283,16 @@ export class UserContextService {
     }
 
     // Include CV metadata (work history / experience level) for richer context
-    if (profile.extractedData && Object.keys(profile.extractedData).length > 0) {
+    if (
+      profile.extractedData &&
+      Object.keys(profile.extractedData).length > 0
+    ) {
       const e = profile.extractedData;
       parts.push('\n=== CAREER BACKGROUND ===');
       if (e.background) parts.push(`Background: ${e.background}`);
       if (e.experience) parts.push(`Experience: ${e.experience}`);
-      if (e.skills && e.skills.length > 0) parts.push(`Key Skills: ${e.skills.join(', ')}`);
+      if (e.skills && e.skills.length > 0)
+        parts.push(`Key Skills: ${e.skills.join(', ')}`);
       if (e.achievements && e.achievements.length > 0) {
         parts.push('Key Achievements:');
         e.achievements.forEach((a) => parts.push(`  - ${a}`));
@@ -305,7 +315,8 @@ export class UserContextService {
         if (resume.workExperience && resume.workExperience.length > 0) {
           parts.push('Work Experience:');
           resume.workExperience.forEach((exp) => {
-            if (exp.jobTitle) parts.push(`  - ${exp.jobTitle} at ${exp.company || 'Unknown'}`);
+            if (exp.jobTitle)
+              parts.push(`  - ${exp.jobTitle} at ${exp.company || 'Unknown'}`);
             if (exp.achievements && exp.achievements.length > 0) {
               exp.achievements.forEach((ach) => parts.push(`    * ${ach}`));
             }
@@ -313,7 +324,8 @@ export class UserContextService {
         }
         if (resume.skills) {
           const allSkills: string[] = [];
-          if (resume.skills.technical) allSkills.push(...resume.skills.technical);
+          if (resume.skills.technical)
+            allSkills.push(...resume.skills.technical);
           if (resume.skills.soft) allSkills.push(...resume.skills.soft);
           if (resume.skills.tools) allSkills.push(...resume.skills.tools);
           if (allSkills.length > 0) {
@@ -335,7 +347,9 @@ export class UserContextService {
       if (relevantContext.length > 0) {
         parts.push('\n=== RELEVANT CONTEXT FROM PAST DOCUMENTS ===');
         relevantContext.forEach((ctx, index) => {
-          parts.push(`\nRelevant Context ${index + 1} (similarity: ${ctx.similarity.toFixed(2)}):`);
+          parts.push(
+            `\nRelevant Context ${index + 1} (similarity: ${ctx.similarity.toFixed(2)}):`,
+          );
           parts.push(ctx.content.substring(0, 500)); // Limit length
         });
       }
@@ -346,13 +360,17 @@ export class UserContextService {
       parts.push('\n=== PERSONA & COMMUNICATION STYLE ===');
       if (profile.persona) {
         if (profile.persona.communicationStyle) {
-          parts.push(`Communication Style: ${profile.persona.communicationStyle}`);
+          parts.push(
+            `Communication Style: ${profile.persona.communicationStyle}`,
+          );
         }
         if (profile.persona.tone) {
           parts.push(`Tone: ${profile.persona.tone}`);
         }
         if (profile.persona.professionalVoice) {
-          parts.push(`Professional Voice: ${profile.persona.professionalVoice}`);
+          parts.push(
+            `Professional Voice: ${profile.persona.professionalVoice}`,
+          );
         }
         if (profile.persona.writingStyle) {
           parts.push(`Writing Style: ${profile.persona.writingStyle}`);
@@ -372,15 +390,16 @@ export class UserContextService {
       if (profile.careerGoals.careerAspirations) {
         parts.push(`Aspirations: ${profile.careerGoals.careerAspirations}`);
       }
-      if (profile.careerGoals.targetRoles && profile.careerGoals.targetRoles.length > 0) {
-        parts.push(`Target Roles: ${profile.careerGoals.targetRoles.join(', ')}`);
+      if (
+        profile.careerGoals.targetRoles &&
+        profile.careerGoals.targetRoles.length > 0
+      ) {
+        parts.push(
+          `Target Roles: ${profile.careerGoals.targetRoles.join(', ')}`,
+        );
       }
     }
 
     return parts.join('\n');
   }
 }
-
-
-
-

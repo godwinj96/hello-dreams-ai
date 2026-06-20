@@ -134,7 +134,10 @@ export class DashboardStatsDto {
   @ApiProperty({ description: 'Activity metrics', type: ActivityMetricsDto })
   activityMetrics: ActivityMetricsDto;
 
-  @ApiProperty({ description: 'Aggregated AI cost metrics', type: CostMetricsDto })
+  @ApiProperty({
+    description: 'Aggregated AI cost metrics',
+    type: CostMetricsDto,
+  })
   costMetrics: CostMetricsDto;
 
   @ApiProperty({
@@ -149,9 +152,3 @@ export class DashboardStatsDto {
   })
   generatedAt: Date;
 }
-
-
-
-
-
-

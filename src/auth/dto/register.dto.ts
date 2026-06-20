@@ -11,12 +11,18 @@ export class RegisterDto {
   email: string;
 
   @ApiProperty({
-    description: 'User password (min 8 chars, requires uppercase, number, and symbol)',
+    description:
+      'User password (min 8 chars, requires uppercase, number, and symbol)',
     example: 'SecurePassword123!',
     minLength: 8,
   })
   @IsString()
-  @IsStrongPassword({ minLength: 8, minUppercase: 1, minNumbers: 1, minSymbols: 1 })
+  @IsStrongPassword({
+    minLength: 8,
+    minUppercase: 1,
+    minNumbers: 1,
+    minSymbols: 1,
+  })
   password: string;
 
   @ApiProperty({
@@ -26,4 +32,3 @@ export class RegisterDto {
   @IsString()
   name: string;
 }
-

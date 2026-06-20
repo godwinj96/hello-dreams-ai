@@ -12,7 +12,3 @@ export const ThrottleAIGeneration = () =>
  */
 export const ThrottleChat = () =>
   applyDecorators(Throttle({ default: { limit: 20, ttl: 60000 } }));
-
-
-
-

@@ -24,6 +24,9 @@ export class PersonaAnswer {
   @Column()
   questionId: string;
 
+  @Column({ nullable: true })
+  optionId: string;
+
   @Column('text')
   question: string;
 
@@ -36,4 +39,3 @@ export class PersonaAnswer {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

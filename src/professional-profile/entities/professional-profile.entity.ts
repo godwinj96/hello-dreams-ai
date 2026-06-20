@@ -125,4 +125,3 @@ export class ProfessionalProfile {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

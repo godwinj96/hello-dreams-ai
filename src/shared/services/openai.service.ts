@@ -17,14 +17,15 @@ export class OpenAIService {
 
   constructor(
     private configService: ConfigService,
-    @Optional() @Inject(PromptInjectionGuardService)
+    @Optional()
+    @Inject(PromptInjectionGuardService)
     private promptInjectionGuard?: PromptInjectionGuardService,
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     const configuredModel =
       this.configService.get<string>('OPENAI_CHAT_MODEL') || 'gpt-4.1-mini';
     this.defaultChatModel = configuredModel;
-    
+
     if (!apiKey) {
       this.logger.warn(
         'OPENAI_API_KEY not set. OpenAI services will not work.',
@@ -44,7 +45,12 @@ export class OpenAIService {
     temperature: number = 0.7,
     maxTokens: number = 2048,
   ): Promise<string> {
-    const result = await this.chatWithUsage(messages, model, temperature, maxTokens);
+    const result = await this.chatWithUsage(
+      messages,
+      model,
+      temperature,
+      maxTokens,
+    );
     return result.content;
   }
 
@@ -176,8 +182,10 @@ export class OpenAIService {
     }
 
     try {
-      const prompt = systemPrompt || 'Extract structured data from the following text according to the provided schema. Return only valid JSON.';
-      
+      const prompt =
+        systemPrompt ||
+        'Extract structured data from the following text according to the provided schema. Return only valid JSON.';
+
       const messages: ChatMessage[] = [
         {
           role: MessageRole.System,
@@ -189,8 +197,12 @@ export class OpenAIService {
         },
       ];
 
-      const result = await this.chatWithUsage(messages, this.defaultChatModel, 0.3);
-      
+      const result = await this.chatWithUsage(
+        messages,
+        this.defaultChatModel,
+        0.3,
+      );
+
       // Try to parse JSON from response
       try {
         const jsonMatch = result.content.match(/\{[\s\S]*\}/);
@@ -202,7 +214,10 @@ export class OpenAIService {
           };
         }
       } catch (parseError) {
-        this.logger.warn('Failed to parse JSON from OpenAI response', parseError);
+        this.logger.warn(
+          'Failed to parse JSON from OpenAI response',
+          parseError,
+        );
       }
 
       return null;
@@ -281,13 +296,3 @@ export class OpenAIService {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-

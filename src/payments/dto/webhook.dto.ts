@@ -1,4 +1,3 @@
-
 import { ApiProperty } from '@nestjs/swagger';
 
 export class PaystackWebhookDto {
@@ -58,8 +57,3 @@ export class PaystackWebhookDto {
     metadata?: Record<string, any>;
   };
 }
-
-
-
-
-

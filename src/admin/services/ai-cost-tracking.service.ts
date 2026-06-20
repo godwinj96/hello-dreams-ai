@@ -1,15 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
-import { AiUsageMetadata } from '../../shared/types/ai-usage.types';
 import { DEFAULT_NGN_TO_USD_RATE } from '../../shared/utils/cost-calculator.util';
-import { UsageTrackingService } from './usage-tracking.service';
+import { CreditsTrackingService } from '../../credits/credits-tracking.service';
 
 @Injectable()
 export class AiCostTrackingService {
   constructor(
-    private readonly usageTrackingService: UsageTrackingService,
     private readonly configService: ConfigService,
+    private readonly creditsTrackingService: CreditsTrackingService,
   ) {}
 
   createAccumulator(): AiCostAccumulator {
@@ -34,35 +33,13 @@ export class AiCostTrackingService {
     accumulator: AiCostAccumulator,
     extraMetadata?: Record<string, unknown>,
   ): void {
-    if (accumulator.isEmpty()) {
-      return;
-    }
-
-    const totals = accumulator.getTotals();
-    const metadata: AiUsageMetadata = {
-      ...extraMetadata,
-      breakdown: accumulator.getBreakdown(),
-      estimated: accumulator.hasEstimatedCosts() || undefined,
-    };
-
-    const primary = accumulator.getBreakdown()[0];
-    if (primary) {
-      metadata.operation = primary.operation;
-      metadata.provider = primary.provider;
-      metadata.model = primary.model;
-    }
-
-    this.usageTrackingService
-      .trackUsageWithCosts(
-        userId,
-        actionType,
-        module,
-        totals.tokensUsed,
-        totals.costUsd,
-        totals.costNgn,
-        metadata,
-      )
-      .catch((err) => console.error('Failed to track AI usage:', err));
+    this.creditsTrackingService.recordAiUsage(
+      userId,
+      actionType,
+      module,
+      accumulator,
+      extraMetadata,
+    );
   }
 
   recordStandalone(
@@ -72,6 +49,26 @@ export class AiCostTrackingService {
     accumulator: AiCostAccumulator,
     extraMetadata?: Record<string, unknown>,
   ): void {
-    this.recordFromAccumulator(userId, actionType, module, accumulator, extraMetadata);
+    this.recordFromAccumulator(
+      userId,
+      actionType,
+      module,
+      accumulator,
+      extraMetadata,
+    );
+  }
+
+  recordFlatUsage(
+    userId: string,
+    actionType: string,
+    module: string,
+    extraMetadata?: Record<string, unknown>,
+  ): void {
+    this.creditsTrackingService.recordFlatUsage(
+      userId,
+      actionType,
+      module,
+      extraMetadata,
+    );
   }
 }

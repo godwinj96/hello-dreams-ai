@@ -27,11 +27,3 @@ import { CreditsModule } from '../credits/credits.module';
   exports: [HeadshotGeneratorService],
 })
 export class HeadshotGeneratorModule {}
-
-
-
-
-
-
-
-

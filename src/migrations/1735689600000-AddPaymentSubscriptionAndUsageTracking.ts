@@ -10,9 +10,7 @@ export class AddPaymentSubscriptionAndUsageTracking1735689600000
     await queryRunner.query(
       `ALTER TABLE "users" ADD "credits" integer NOT NULL DEFAULT 0`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "users" ADD "subscriptionId" uuid`,
-    );
+    await queryRunner.query(`ALTER TABLE "users" ADD "subscriptionId" uuid`);
 
     // Add token and cost tracking columns to usage_tracking table
     await queryRunner.query(
@@ -139,17 +137,18 @@ export class AddPaymentSubscriptionAndUsageTracking1735689600000
     await queryRunner.query(`DROP TABLE "subscriptions"`);
 
     // Remove columns from usage_tracking
-    await queryRunner.query(`ALTER TABLE "usage_tracking" DROP COLUMN "costNgn"`);
-    await queryRunner.query(`ALTER TABLE "usage_tracking" DROP COLUMN "costUsd"`);
-    await queryRunner.query(`ALTER TABLE "usage_tracking" DROP COLUMN "tokensUsed"`);
+    await queryRunner.query(
+      `ALTER TABLE "usage_tracking" DROP COLUMN "costNgn"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "usage_tracking" DROP COLUMN "costUsd"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "usage_tracking" DROP COLUMN "tokensUsed"`,
+    );
 
     // Remove columns from users
     await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "subscriptionId"`);
     await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "credits"`);
   }
 }
-
-
-
-
-

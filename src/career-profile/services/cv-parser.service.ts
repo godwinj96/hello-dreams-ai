@@ -37,7 +37,8 @@ export class CvParserService {
       if (file.mimetype === 'application/pdf') {
         cvText = await this.extractTextFromPdf(file.buffer);
       } else if (
-        file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.mimetype ===
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         file.mimetype === 'application/msword'
       ) {
         cvText = await this.extractTextFromDocx(file.buffer);
@@ -49,7 +50,10 @@ export class CvParserService {
       const extractedData = await this.extractStructuredData(cvText);
 
       // Save to professional profile
-      await this.professionalProfileService.updateCvMetadata(userId, extractedData);
+      await this.professionalProfileService.updateCvMetadata(
+        userId,
+        extractedData,
+      );
 
       return extractedData;
     } catch (error) {
@@ -97,12 +101,15 @@ export class CvParserService {
       // pdf-parse is a CommonJS module, handle both default and namespace imports
       const pdfParseModule = await import('pdf-parse');
       // Handle both CommonJS (default) and ESM imports
-      const pdfParseFunction = (pdfParseModule as any).default || pdfParseModule;
+      const pdfParseFunction =
+        (pdfParseModule as any).default || pdfParseModule;
       const data = await pdfParseFunction(buffer);
       return data.text;
     } catch (error) {
       this.logger.error('Error extracting text from PDF', error);
-      throw new Error('Failed to extract text from PDF. Please ensure the PDF is valid and try again.');
+      throw new Error(
+        'Failed to extract text from PDF. Please ensure the PDF is valid and try again.',
+      );
     }
   }
 
@@ -136,10 +143,12 @@ export class CvParserService {
   }> {
     const schema = {
       pastJobTitles: 'array of job titles from work history',
-      experienceLevel: 'one of: student, entry-level, mid-level, senior, executive',
+      experienceLevel:
+        'one of: student, entry-level, mid-level, senior, executive',
       industries: 'array of industries the person has worked in',
       keywords: 'array of key skills and technologies mentioned',
-      workHistory: 'array of work experience objects with jobTitle, company, duration, and responsibilities',
+      workHistory:
+        'array of work experience objects with jobTitle, company, duration, and responsibilities',
     };
 
     const systemPrompt = `You are a CV parser. Extract structured information from the CV text provided. 
@@ -191,4 +200,3 @@ Be thorough and accurate. Only extract information that is clearly stated in the
     }
   }
 }
-

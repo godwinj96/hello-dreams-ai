@@ -7,10 +7,17 @@ export class DocumentMessageResponseDto {
   @ApiProperty({ description: 'Message ID', example: 'uuid' })
   id: string;
 
-  @ApiProperty({ description: 'Message role', enum: MessageRole, example: MessageRole.User })
+  @ApiProperty({
+    description: 'Message role',
+    enum: MessageRole,
+    example: MessageRole.User,
+  })
   role: MessageRole;
 
-  @ApiProperty({ description: 'Message content', example: 'I am applying for the Software Engineer position' })
+  @ApiProperty({
+    description: 'Message content',
+    example: 'I am applying for the Software Engineer position',
+  })
   content: string;
 
   @ApiProperty({ description: 'Creation timestamp' })
@@ -21,22 +28,46 @@ export class DocumentConversationResponseDto {
   @ApiProperty({ description: 'Conversation ID', example: 'uuid' })
   id: string;
 
-  @ApiProperty({ description: 'Conversation title', nullable: true, example: 'Cover Letter for Software Engineer' })
+  @ApiProperty({
+    description: 'Conversation title',
+    nullable: true,
+    example: 'Cover Letter for Software Engineer',
+  })
   title: string | null;
 
-  @ApiProperty({ description: 'Document type', enum: DocumentType, example: DocumentType.CoverLetter })
+  @ApiProperty({
+    description: 'Document type',
+    enum: DocumentType,
+    example: DocumentType.CoverLetter,
+  })
   documentType: DocumentType;
 
-  @ApiProperty({ description: 'Conversation status', enum: ConversationStatus, example: ConversationStatus.Active })
+  @ApiProperty({
+    description: 'Conversation status',
+    enum: ConversationStatus,
+    example: ConversationStatus.Active,
+  })
   status: ConversationStatus;
 
-  @ApiProperty({ description: 'Target job title', nullable: true, example: 'Software Engineer' })
+  @ApiProperty({
+    description: 'Target job title',
+    nullable: true,
+    example: 'Software Engineer',
+  })
   targetJobTitle: string | null;
 
-  @ApiProperty({ description: 'Target company', nullable: true, example: 'Tech Corp' })
+  @ApiProperty({
+    description: 'Target company',
+    nullable: true,
+    example: 'Tech Corp',
+  })
   targetCompany: string | null;
 
-  @ApiProperty({ description: 'Job description', nullable: true, example: 'We are looking for...' })
+  @ApiProperty({
+    description: 'Job description',
+    nullable: true,
+    example: 'We are looking for...',
+  })
   jobDescription: string | null;
 
   @ApiProperty({ description: 'Creation timestamp' })
@@ -45,7 +76,11 @@ export class DocumentConversationResponseDto {
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt: Date;
 
-  @ApiProperty({ description: 'List of messages', type: [DocumentMessageResponseDto], required: false })
+  @ApiProperty({
+    description: 'List of messages',
+    type: [DocumentMessageResponseDto],
+    required: false,
+  })
   messages?: DocumentMessageResponseDto[];
 }
 
@@ -56,7 +91,11 @@ export class DocumentResponseDto {
   @ApiProperty({ description: 'Conversation ID', example: 'uuid' })
   conversationId: string;
 
-  @ApiProperty({ description: 'Document type', enum: DocumentType, example: DocumentType.CoverLetter })
+  @ApiProperty({
+    description: 'Document type',
+    enum: DocumentType,
+    example: DocumentType.CoverLetter,
+  })
   documentType: DocumentType;
 
   @ApiProperty({
@@ -90,10 +129,18 @@ export class DocumentResponseDto {
   @ApiProperty({ description: 'Document version', example: 1 })
   version: number;
 
-  @ApiProperty({ description: 'Target job title', nullable: true, example: 'Software Engineer' })
+  @ApiProperty({
+    description: 'Target job title',
+    nullable: true,
+    example: 'Software Engineer',
+  })
   targetJobTitle: string | null;
 
-  @ApiProperty({ description: 'Target company', nullable: true, example: 'Tech Corp' })
+  @ApiProperty({
+    description: 'Target company',
+    nullable: true,
+    example: 'Tech Corp',
+  })
   targetCompany: string | null;
 
   @ApiProperty({ description: 'Creation timestamp' })
@@ -102,4 +149,3 @@ export class DocumentResponseDto {
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt: Date;
 }
-

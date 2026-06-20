@@ -1,7 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import { PaymentStatus, PaymentType } from '../../payments/entities/payment.entity';
+import {
+  PaymentStatus,
+  PaymentType,
+} from '../../payments/entities/payment.entity';
 import { SubscriptionStatus } from '../../payments/entities/subscription.entity';
 import { TimeRange } from './time-range.dto';
 

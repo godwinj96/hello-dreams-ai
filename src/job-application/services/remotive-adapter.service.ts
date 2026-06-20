@@ -9,7 +9,6 @@ export class RemotiveAdapterService {
   private readonly baseUrl = 'https://remotive.com/api/remote-jobs';
 
   async search(filters: SearchJobsDto): Promise<NormalizedJobListing[]> {
-
     try {
       const { data } = await axios.get(this.baseUrl, {
         params: {

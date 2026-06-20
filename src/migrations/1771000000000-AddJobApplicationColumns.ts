@@ -1,6 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddJobApplicationColumns1771000000000 implements MigrationInterface {
+export class AddJobApplicationColumns1771000000000
+  implements MigrationInterface
+{
   name = 'AddJobApplicationColumns1771000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -92,6 +94,8 @@ export class AddJobApplicationColumns1771000000000 implements MigrationInterface
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "job_applications"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "job_listings"`);
-    await queryRunner.query(`DROP TYPE IF EXISTS "public"."job_applications_status_enum"`);
+    await queryRunner.query(
+      `DROP TYPE IF EXISTS "public"."job_applications_status_enum"`,
+    );
   }
 }

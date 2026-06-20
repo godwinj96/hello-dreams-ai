@@ -77,21 +77,24 @@ Retrieve comprehensive dashboard statistics for admin users. Supports filtering 
     name: 'timeRange',
     required: false,
     enum: ['today', 'week', 'month', 'year', 'custom'],
-    description: 'Time range for statistics. Use "custom" with startDate and endDate for custom ranges.',
+    description:
+      'Time range for statistics. Use "custom" with startDate and endDate for custom ranges.',
     example: 'week',
   })
   @ApiQuery({
     name: 'startDate',
     required: false,
     type: String,
-    description: 'Start date for custom time range (ISO 8601 format). Only used when timeRange=custom.',
+    description:
+      'Start date for custom time range (ISO 8601 format). Only used when timeRange=custom.',
     example: '2024-01-01T00:00:00.000Z',
   })
   @ApiQuery({
     name: 'endDate',
     required: false,
     type: String,
-    description: 'End date for custom time range (ISO 8601 format). Only used when timeRange=custom.',
+    description:
+      'End date for custom time range (ISO 8601 format). Only used when timeRange=custom.',
     example: '2024-01-31T23:59:59.999Z',
   })
   @ApiResponse({
@@ -99,8 +102,14 @@ Retrieve comprehensive dashboard statistics for admin users. Supports filtering 
     description: 'Dashboard statistics retrieved successfully',
     type: DashboardStatsDto,
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin or Superuser access required' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin or Superuser access required',
+  })
   async getDashboardStats(
     @Request() req,
     @Query() timeRange?: TimeRangeDto,
@@ -167,10 +176,17 @@ eventSource.onerror = (error) => {
   })
   @ApiResponse({
     status: 200,
-    description: 'SSE stream established - Connection remains open for real-time updates',
+    description:
+      'SSE stream established - Connection remains open for real-time updates',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin or Superuser access required' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin or Superuser access required',
+  })
   async streamDashboard(@Request() req, @Res() res: any): Promise<void> {
     // Set up SSE connection
     res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for nginx
@@ -187,7 +203,9 @@ eventSource.onerror = (error) => {
         },
         error: (err) => {
           console.error('SSE error:', err);
-          res.write(`event: error\ndata: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
+          res.write(
+            `event: error\ndata: ${JSON.stringify({ error: 'Stream error' })}\n\n`,
+          );
         },
       });
 
@@ -208,7 +226,9 @@ eventSource.onerror = (error) => {
     });
 
     // Send initial connection message
-    res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date() })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: 'connected', timestamp: new Date() })}\n\n`,
+    );
   }
 
   @Get('users/:id/stats')
@@ -270,14 +290,16 @@ Retrieve daily breakdown of AI usage (tokens, costs, API calls) for a specific u
     name: 'startDate',
     required: false,
     type: String,
-    description: 'Start date for statistics range (ISO 8601 format). Defaults to 30 days ago if not provided.',
+    description:
+      'Start date for statistics range (ISO 8601 format). Defaults to 30 days ago if not provided.',
     example: '2024-01-01T00:00:00.000Z',
   })
   @ApiQuery({
     name: 'endDate',
     required: false,
     type: String,
-    description: 'End date for statistics range (ISO 8601 format). Defaults to today if not provided.',
+    description:
+      'End date for statistics range (ISO 8601 format). Defaults to today if not provided.',
     example: '2024-01-31T23:59:59.999Z',
   })
   @ApiResponse({
@@ -285,8 +307,14 @@ Retrieve daily breakdown of AI usage (tokens, costs, API calls) for a specific u
     description: 'User daily usage statistics retrieved successfully',
     type: UserDailyStatsDto,
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin or Superuser access required' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin or Superuser access required',
+  })
   @ApiResponse({ status: 404, description: 'User not found' })
   async getUserDailyStats(
     @Request() req,
@@ -296,9 +324,7 @@ Retrieve daily breakdown of AI usage (tokens, costs, API calls) for a specific u
   ): Promise<UserDailyStatsDto> {
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
-    
+
     return this.usageTrackingService.getUserDailyStats(userId, start, end);
   }
 }
-
-

@@ -1,7 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI, { toFile } from 'openai';
-import { HeadshotStyle, HeadshotPersonaType } from '../entities/headshot-generation.entity';
+import {
+  HeadshotStyle,
+  HeadshotPersonaType,
+} from '../entities/headshot-generation.entity';
 import { SupabaseStorageService } from '../../shared/services/supabase-storage.service';
 
 type GenerationResult = {
@@ -29,8 +32,14 @@ export class ImageGenerationService {
       throw new Error('OPENAI_API_KEY is required but not configured.');
     }
     this.openai = new OpenAI({ apiKey: openaiKey });
-    this.model = this.configService.get<string>('OPENAI_IMAGE_MODEL', 'gpt-image-1');
-    const quality = this.configService.get<string>('OPENAI_IMAGE_QUALITY', 'medium');
+    this.model = this.configService.get<string>(
+      'OPENAI_IMAGE_MODEL',
+      'gpt-image-1',
+    );
+    const quality = this.configService.get<string>(
+      'OPENAI_IMAGE_QUALITY',
+      'medium',
+    );
     this.imageQuality =
       quality === 'low' || quality === 'high' ? quality : 'medium';
     this.logger.log(`OpenAI image generation enabled (model: ${this.model}).`);
@@ -53,11 +62,15 @@ export class ImageGenerationService {
     }
   }
 
-  private async fetchReferenceImageAsBuffer(originalImageUrl: string): Promise<Buffer> {
+  private async fetchReferenceImageAsBuffer(
+    originalImageUrl: string,
+  ): Promise<Buffer> {
     // Bucket is private — use Supabase server-side download() to bypass RLS
     const filePath = this.extractStoragePathFromUrl(originalImageUrl);
     if (filePath) {
-      this.logger.log(`Downloading reference image via Supabase storage: ${filePath}`);
+      this.logger.log(
+        `Downloading reference image via Supabase storage: ${filePath}`,
+      );
       return await this.supabaseStorageService.downloadFile(filePath);
     }
 
@@ -88,7 +101,8 @@ export class ImageGenerationService {
     // Fetch the reference image (required for identity-preserving generation)
     let referenceBuffer: Buffer;
     try {
-      referenceBuffer = await this.fetchReferenceImageAsBuffer(originalImageUrl);
+      referenceBuffer =
+        await this.fetchReferenceImageAsBuffer(originalImageUrl);
       this.logger.log('Reference image fetched successfully.');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -102,7 +116,9 @@ export class ImageGenerationService {
       // gpt-image-1 supports `n` images in a single call — no need to loop
       const response = await this.openai.images.edit({
         model: this.model,
-        image: await toFile(referenceBuffer, 'reference.jpg', { type: 'image/jpeg' }),
+        image: await toFile(referenceBuffer, 'reference.jpg', {
+          type: 'image/jpeg',
+        }),
         prompt,
         n: count,
         size: '1024x1024',
@@ -117,7 +133,9 @@ export class ImageGenerationService {
         throw new BadRequestException('OpenAI returned no image data.');
       }
 
-      this.logger.log(`Successfully generated ${buffers.length} headshot(s) via OpenAI.`);
+      this.logger.log(
+        `Successfully generated ${buffers.length} headshot(s) via OpenAI.`,
+      );
       return {
         buffers,
         provider: 'openai',
@@ -133,7 +151,10 @@ export class ImageGenerationService {
     }
   }
 
-  private buildHeadshotPrompt(style: HeadshotStyle, persona: HeadshotPersonaType): string {
+  private buildHeadshotPrompt(
+    style: HeadshotStyle,
+    persona: HeadshotPersonaType,
+  ): string {
     // IMPORTANT: Do NOT describe specific facial features (eyes, skin, hair, age, body type).
     // Only describe clothing, background, lighting, posture, and professional mood.
     // Identity is preserved via the reference image — the prompt drives styling only.

@@ -62,7 +62,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
         const databaseUrl = configService.get('DATABASE_URL');
-        
+
         // Support both DATABASE_URL (connection string) and individual DB_* variables
         if (databaseUrl) {
           return {

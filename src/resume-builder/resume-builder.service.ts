@@ -16,7 +16,10 @@ import { UpdateResumeConversationDto } from './dto/update-conversation.dto';
 import { ConversationStatus } from './enums/conversation-status.enum';
 import { MessageRole } from './enums/message-role.enum';
 import { AiChatService, ChatMessage } from './services/ai-chat.service';
-import { ResumeGeneratorService, ResumeJson } from './services/resume-generator.service';
+import {
+  ResumeGeneratorService,
+  ResumeJson,
+} from './services/resume-generator.service';
 import {
   ResumeConversationResponseDto,
   ResumeMessageResponseDto,
@@ -24,7 +27,11 @@ import {
   ConversationWithPaginatedMessagesDto,
 } from './dto/resume-response.dto';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
-import { PaginationQueryDto, PaginationMetaDto, PaginatedResponseDto } from './dto/pagination.dto';
+import {
+  PaginationQueryDto,
+  PaginationMetaDto,
+  PaginatedResponseDto,
+} from './dto/pagination.dto';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
 import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
@@ -92,7 +99,8 @@ export class ResumeBuilderService implements OnModuleInit {
       status: ConversationStatus.Active,
     } as Partial<ResumeConversation>);
 
-    const savedConversation = await this.conversationRepository.save(conversation);
+    const savedConversation =
+      await this.conversationRepository.save(conversation);
 
     // Backfill any missing embeddings for this user (resumes + persona) — fire-and-forget
     this.backfillUserEmbeddings(userId).catch((err) =>
@@ -101,11 +109,11 @@ export class ResumeBuilderService implements OnModuleInit {
 
     // Check if user has basic info from career profile
     const profile = await this.professionalProfileService.getProfile(userId);
-    const hasBasicInfo = profile.basicInfo && (
-      profile.basicInfo.name ||
-      profile.basicInfo.email ||
-      profile.basicInfo.phone
-    );
+    const hasBasicInfo =
+      profile.basicInfo &&
+      (profile.basicInfo.name ||
+        profile.basicInfo.email ||
+        profile.basicInfo.phone);
 
     const initialGreeting = getResumeBuilderWelcome({
       hasBasicInfo: !!(hasBasicInfo && profile.basicInfo.name),
@@ -123,8 +131,14 @@ export class ResumeBuilderService implements OnModuleInit {
       .trackAction(userId, 'conversation_created', 'resume-builder', {
         conversationId: savedConversation.id,
       })
-      .catch((err) => console.error('Failed to track conversation creation:', err));
-    this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'conversation_created');
+      .catch((err) =>
+        console.error('Failed to track conversation creation:', err),
+      );
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'resume-builder',
+      'conversation_created',
+    );
 
     return this.findOneConversation(savedConversation.id, userId);
   }
@@ -137,13 +151,14 @@ export class ResumeBuilderService implements OnModuleInit {
     const limit = pagination?.limit || 10;
     const skip = (page - 1) * limit;
 
-    const [conversations, total] = await this.conversationRepository.findAndCount({
-      where: { userId },
-      order: { updatedAt: 'DESC' },
-      relations: ['messages'],
-      skip,
-      take: limit,
-    });
+    const [conversations, total] =
+      await this.conversationRepository.findAndCount({
+        where: { userId },
+        order: { updatedAt: 'DESC' },
+        relations: ['messages'],
+        skip,
+        take: limit,
+      });
 
     const totalPages = Math.ceil(total / limit);
 
@@ -176,7 +191,9 @@ export class ResumeBuilderService implements OnModuleInit {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     // Get paginated messages if pagination is requested
@@ -188,12 +205,13 @@ export class ResumeBuilderService implements OnModuleInit {
       const limit = messagesPagination.limit || 10;
       const skip = (page - 1) * limit;
 
-      const [paginatedMessages, total] = await this.messageRepository.findAndCount({
-        where: { conversationId: id },
-        order: { createdAt: 'ASC' },
-        skip,
-        take: limit,
-      });
+      const [paginatedMessages, total] =
+        await this.messageRepository.findAndCount({
+          where: { conversationId: id },
+          order: { createdAt: 'ASC' },
+          skip,
+          take: limit,
+        });
 
       messages = paginatedMessages;
 
@@ -239,7 +257,9 @@ export class ResumeBuilderService implements OnModuleInit {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     Object.assign(conversation, updateDto);
@@ -258,7 +278,9 @@ export class ResumeBuilderService implements OnModuleInit {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     await this.conversationRepository.remove(conversation);
@@ -280,11 +302,15 @@ export class ResumeBuilderService implements OnModuleInit {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     if (conversation.status === ConversationStatus.Archived) {
-      throw new ForbiddenException('Cannot send messages to archived conversation');
+      throw new ForbiddenException(
+        'Cannot send messages to archived conversation',
+      );
     }
 
     // Save user message
@@ -304,30 +330,47 @@ export class ResumeBuilderService implements OnModuleInit {
     // Build profile context block from the user's professional profile
     let profileContextBlock = '';
     try {
-      const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+      const profile =
+        await this.professionalProfileService.getProfileForGeneration(userId);
       const knownFields: string[] = [];
 
       if (profile.basicInfo) {
-        if (profile.basicInfo.name) knownFields.push(`Name: ${profile.basicInfo.name}`);
-        if (profile.basicInfo.email) knownFields.push(`Email: ${profile.basicInfo.email}`);
-        if (profile.basicInfo.phone) knownFields.push(`Phone: ${profile.basicInfo.phone}`);
-        const location = [profile.basicInfo.city, profile.basicInfo.state, profile.basicInfo.country]
-          .filter(Boolean).join(', ');
+        if (profile.basicInfo.name)
+          knownFields.push(`Name: ${profile.basicInfo.name}`);
+        if (profile.basicInfo.email)
+          knownFields.push(`Email: ${profile.basicInfo.email}`);
+        if (profile.basicInfo.phone)
+          knownFields.push(`Phone: ${profile.basicInfo.phone}`);
+        const location = [
+          profile.basicInfo.city,
+          profile.basicInfo.state,
+          profile.basicInfo.country,
+        ]
+          .filter(Boolean)
+          .join(', ');
         if (location) knownFields.push(`Location: ${location}`);
-        if (profile.basicInfo.linkedIn) knownFields.push(`LinkedIn: ${profile.basicInfo.linkedIn}`);
+        if (profile.basicInfo.linkedIn)
+          knownFields.push(`LinkedIn: ${profile.basicInfo.linkedIn}`);
       }
 
       if (profile.targetJob?.targetJobTitle) {
-        knownFields.push(`Target Job Title: ${profile.targetJob.targetJobTitle}`);
-        if (profile.targetJob.careerGoal) knownFields.push(`Career Goal: ${profile.targetJob.careerGoal}`);
+        knownFields.push(
+          `Target Job Title: ${profile.targetJob.targetJobTitle}`,
+        );
+        if (profile.targetJob.careerGoal)
+          knownFields.push(`Career Goal: ${profile.targetJob.careerGoal}`);
       }
 
       if (profile.personaData?.currentPersona) {
-        knownFields.push(`Professional Persona: ${profile.personaData.currentPersona}${profile.personaData.appliedPersona ? ' (applied)' : ''}`);
+        knownFields.push(
+          `Professional Persona: ${profile.personaData.currentPersona}${profile.personaData.appliedPersona ? ' (applied)' : ''}`,
+        );
       }
 
-      if (profile.persona?.tone) knownFields.push(`Tone: ${profile.persona.tone}`);
-      if (profile.persona?.writingStyle) knownFields.push(`Writing Style: ${profile.persona.writingStyle}`);
+      if (profile.persona?.tone)
+        knownFields.push(`Tone: ${profile.persona.tone}`);
+      if (profile.persona?.writingStyle)
+        knownFields.push(`Writing Style: ${profile.persona.writingStyle}`);
 
       if (knownFields.length > 0) {
         profileContextBlock = [
@@ -337,7 +380,10 @@ export class ResumeBuilderService implements OnModuleInit {
         ].join('\n');
       }
     } catch (error) {
-      this.logger.warn('Could not load professional profile, continuing without it', error);
+      this.logger.warn(
+        'Could not load professional profile, continuing without it',
+        error,
+      );
     }
 
     // Semantically search the user's past content for snippets relevant to their latest message.
@@ -348,33 +394,43 @@ export class ResumeBuilderService implements OnModuleInit {
     try {
       if (this.embeddingService.isEmbeddingsAvailable()) {
         const latestUserMessage = sendDto.content;
-        const queryEmbedding = await this.embeddingService.generateEmbedding(latestUserMessage);
+        const queryEmbedding =
+          await this.embeddingService.generateEmbedding(latestUserMessage);
         costAccumulator.addEmbedding({
           provider: 'openai',
           model: queryEmbedding.model,
           promptTokens: queryEmbedding.usage.promptTokens,
           totalTokens: queryEmbedding.usage.totalTokens,
         });
-        const allEmbeddings = await this.embeddingRepository.find({ where: { userId } });
+        const allEmbeddings = await this.embeddingRepository.find({
+          where: { userId },
+        });
 
         if (allEmbeddings.length > 0) {
           const similar = this.embeddingService.findMostSimilar(
             queryEmbedding.embedding,
-            allEmbeddings.map((e) => ({ id: e.id, embedding: e.embedding, metadata: { contentType: e.contentType } })),
-            3,    // top 3 snippets
+            allEmbeddings.map((e) => ({
+              id: e.id,
+              embedding: e.embedding,
+              metadata: { contentType: e.contentType },
+            })),
+            3, // top 3 snippets
             0.65, // only high-confidence matches
           );
 
           if (similar.length > 0) {
             const snippets = similar
-              .map((s) => allEmbeddings.find((e) => e.id === s.id)?.content ?? '')
+              .map(
+                (s) => allEmbeddings.find((e) => e.id === s.id)?.content ?? '',
+              )
               .filter(Boolean)
               .map((c) => c.substring(0, 400));
 
             if (snippets.length > 0) {
-              semanticContextBlock = '\n\n--- RELEVANT PAST CONTENT (use as reference, do not re-ask) ---\n'
-                + snippets.join('\n---\n')
-                + '\n--- END RELEVANT CONTENT ---';
+              semanticContextBlock =
+                '\n\n--- RELEVANT PAST CONTENT (use as reference, do not re-ask) ---\n' +
+                snippets.join('\n---\n') +
+                '\n--- END RELEVANT CONTENT ---';
             }
           }
         }
@@ -386,7 +442,10 @@ export class ResumeBuilderService implements OnModuleInit {
     // Prepend a system message that combines the AI role instructions + known profile context
     // + semantically relevant snippets. This ensures OpenAI always gets the full context and
     // profile data is authoritative system-level info, not mixed with user input.
-    const systemContent = this.aiChatService.getBaseSystemPrompt() + profileContextBlock + semanticContextBlock;
+    const systemContent =
+      this.aiChatService.getBaseSystemPrompt() +
+      profileContextBlock +
+      semanticContextBlock;
     const messagesWithContext: ChatMessage[] = [
       { role: MessageRole.System, content: systemContent },
       ...chatMessages,
@@ -394,9 +453,11 @@ export class ResumeBuilderService implements OnModuleInit {
 
     // Get AI response with usage tracking
     let aiResponse: string;
-    let usageData: { usage: any; model: string; provider: string } | null = null;
+    let usageData: { usage: any; model: string; provider: string } | null =
+      null;
     try {
-      const result = await this.aiChatService.chatWithUsage(messagesWithContext);
+      const result =
+        await this.aiChatService.chatWithUsage(messagesWithContext);
       aiResponse = result.content;
       usageData = result;
     } catch (error) {
@@ -414,7 +475,10 @@ export class ResumeBuilderService implements OnModuleInit {
     // Check if AI is indicating resume generation
     const shouldGenerateResume = this.shouldGenerateResume(aiResponse);
 
-    if (shouldGenerateResume && conversation.status === ConversationStatus.Active) {
+    if (
+      shouldGenerateResume &&
+      conversation.status === ConversationStatus.Active
+    ) {
       // Update conversation status
       conversation.status = ConversationStatus.Completed;
       await this.conversationRepository.save(conversation);
@@ -422,7 +486,11 @@ export class ResumeBuilderService implements OnModuleInit {
       // Generate and save resume — reuse the messagesWithContext already built above
       // (system prompt + profile context already prepended)
       try {
-        await this.generateAndSaveResume(conversationId, userId, messagesWithContext);
+        await this.generateAndSaveResume(
+          conversationId,
+          userId,
+          messagesWithContext,
+        );
       } catch (error) {
         this.logger.error('Error generating resume', error);
         // Don't throw - the message was already saved
@@ -448,11 +516,18 @@ export class ResumeBuilderService implements OnModuleInit {
         { conversationId },
       );
     } else {
-      this.usageTrackingService
-        .trackAction(userId, 'message_sent', 'resume-builder', { conversationId })
-        .catch((err) => console.error('Failed to track message:', err));
+      this.aiCostTrackingService.recordFlatUsage(
+        userId,
+        'message_sent',
+        'resume-builder',
+        { conversationId },
+      );
     }
-    this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'message_sent');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'resume-builder',
+      'message_sent',
+    );
 
     return this.mapMessageToDto(assistantMessage);
   }
@@ -473,7 +548,9 @@ export class ResumeBuilderService implements OnModuleInit {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     const messages = await this.messageRepository.find({
@@ -489,7 +566,8 @@ export class ResumeBuilderService implements OnModuleInit {
     // Get professional profile for context (optional enhancement)
     let profileContext = '';
     try {
-      const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+      const profile =
+        await this.professionalProfileService.getProfileForGeneration(userId);
       if (profile.persona && Object.keys(profile.persona).length > 0) {
         profileContext = `\n\nUser's Professional Persona Context:
 - Communication Style: ${profile.persona.communicationStyle || 'Not specified'}
@@ -498,7 +576,10 @@ export class ResumeBuilderService implements OnModuleInit {
 Please use this persona to inform the tone and style of the resume.`;
       }
     } catch (error) {
-      this.logger.warn('Could not load professional profile, continuing without it', error);
+      this.logger.warn(
+        'Could not load professional profile, continuing without it',
+        error,
+      );
     }
 
     // Add profile context to messages if available
@@ -507,7 +588,8 @@ Please use this persona to inform the tone and style of the resume.`;
           ...chatMessages.slice(0, -1),
           {
             ...chatMessages[chatMessages.length - 1],
-            content: chatMessages[chatMessages.length - 1].content + profileContext,
+            content:
+              chatMessages[chatMessages.length - 1].content + profileContext,
           },
         ]
       : chatMessages;
@@ -554,13 +636,25 @@ Please use this persona to inform the tone and style of the resume.`;
         costAccumulator,
         { conversationId, version: updated.version },
       );
-      this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'resume_generated');
+      this.dashboardEventService.emitFeatureUsed(
+        userId,
+        'resume-builder',
+        'resume_generated',
+      );
 
       return this.mapResumeToDto(updated);
     }
 
-    const result = await this.generateAndSaveResume(conversationId, userId, messagesWithContext);
-    this.dashboardEventService.emitFeatureUsed(userId, 'resume-builder', 'resume_generated');
+    const result = await this.generateAndSaveResume(
+      conversationId,
+      userId,
+      messagesWithContext,
+    );
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'resume-builder',
+      'resume_generated',
+    );
     return result;
   }
 
@@ -579,7 +673,9 @@ Please use this persona to inform the tone and style of the resume.`;
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     const resume = await this.resumeRepository.findOne({
@@ -625,7 +721,9 @@ Please use this persona to inform the tone and style of the resume.`;
     userId: string,
     content: Record<string, any>,
   ): Promise<ResumeResponseDto> {
-    const resume = await this.resumeRepository.findOne({ where: { conversationId } });
+    const resume = await this.resumeRepository.findOne({
+      where: { conversationId },
+    });
 
     if (!resume) {
       throw new NotFoundException(
@@ -652,7 +750,9 @@ Please use this persona to inform the tone and style of the resume.`;
       return this.getResume(conversationId, userId);
     }
 
-    const existing = await this.resumeRepository.findOne({ where: { conversationId } });
+    const existing = await this.resumeRepository.findOne({
+      where: { conversationId },
+    });
     if (!existing) {
       throw new NotFoundException(
         `Resume for conversation ${conversationId} not found`,
@@ -672,7 +772,9 @@ Please use this persona to inform the tone and style of the resume.`;
   }
 
   async deleteResume(conversationId: string, userId: string): Promise<void> {
-    const resume = await this.resumeRepository.findOne({ where: { conversationId } });
+    const resume = await this.resumeRepository.findOne({
+      where: { conversationId },
+    });
     if (!resume) {
       throw new NotFoundException(
         `Resume for conversation ${conversationId} not found`,
@@ -737,7 +839,10 @@ Please use this persona to inform the tone and style of the resume.`;
 
     // Mark resume section as complete in professional profile
     try {
-      await this.professionalProfileService.markSectionComplete(userId, 'resume');
+      await this.professionalProfileService.markSectionComplete(
+        userId,
+        'resume',
+      );
     } catch (error) {
       this.logger.warn('Could not mark resume section as complete', error);
     }
@@ -840,7 +945,11 @@ Please use this persona to inform the tone and style of the resume.`;
         });
         const content = resumeData ?? resume.content;
         try {
-          const result = await this.contextIndexerService.indexResume(resume.id, userId, content);
+          const result = await this.contextIndexerService.indexResume(
+            resume.id,
+            userId,
+            content,
+          );
           this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
             resumeId: resume.id,
             source: 'backfill',
@@ -856,7 +965,8 @@ Please use this persona to inform the tone and style of the resume.`;
       where: { userId, contentType: 'profile', contentId: userId },
     });
     if (!personaEmbedding) {
-      const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+      const profile =
+        await this.professionalProfileService.getProfileForGeneration(userId);
 
       // If personaData is empty here, it means the CV/resume flow is running before persona is created
       // (or it was cleared / saved under a different userId).
@@ -865,13 +975,17 @@ Please use this persona to inform the tone and style of the resume.`;
         (!profile.personaData || !profile.personaData.idealPersona) &&
         (!profile.persona || Object.keys(profile.persona).length === 0)
       ) {
-        this.logger.warn('Backfill persona embedding: profile.personaData appears empty', {
-          userId,
-          hasPersona: !!profile.persona && Object.keys(profile.persona).length > 0,
-          currentPersona: profile.personaData?.currentPersona ?? null,
-          idealPersona: profile.personaData?.idealPersona ?? null,
-          appliedPersona: profile.personaData?.appliedPersona ?? null,
-        });
+        this.logger.warn(
+          'Backfill persona embedding: profile.personaData appears empty',
+          {
+            userId,
+            hasPersona:
+              !!profile.persona && Object.keys(profile.persona).length > 0,
+            currentPersona: profile.personaData?.currentPersona ?? null,
+            idealPersona: profile.personaData?.idealPersona ?? null,
+            appliedPersona: profile.personaData?.appliedPersona ?? null,
+          },
+        );
       }
 
       try {
@@ -897,7 +1011,9 @@ Please use this persona to inform the tone and style of the resume.`;
     resumeId: string,
     content: ResumeJson,
   ): Promise<void> {
-    const existing = await this.resumeDataRepository.findOne({ where: { resumeId } });
+    const existing = await this.resumeDataRepository.findOne({
+      where: { resumeId },
+    });
     const entity = existing ?? this.resumeDataRepository.create({ resumeId });
 
     const contact = content.contact ?? {};
@@ -970,7 +1086,10 @@ Please use this persona to inform the tone and style of the resume.`;
         where: { resumeId: resume.id },
       });
       if (!exists && resume.content) {
-        await this.extractAndSaveResumeData(resume.id, resume.content as ResumeJson);
+        await this.extractAndSaveResumeData(
+          resume.id,
+          resume.content as ResumeJson,
+        );
         count++;
       }
     }
@@ -980,4 +1099,3 @@ Please use this persona to inform the tone and style of the resume.`;
     }
   }
 }
-

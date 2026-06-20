@@ -12,8 +12,3 @@ export class PromoteUserDto {
   @IsNotEmpty()
   role: Role;
 }
-
-
-
-
-

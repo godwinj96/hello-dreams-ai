@@ -3,4 +3,3 @@
 export class GenerateResumeDto {
   // Can be extended in the future if needed
 }
-

@@ -56,9 +56,7 @@ export class SerpApiAdapterService {
         timeout: 10000,
       });
 
-      return (data.jobs_results ?? []).map((job: any) =>
-        this.normalise(job),
-      );
+      return (data.jobs_results ?? []).map((job: any) => this.normalise(job));
     } catch (err) {
       this.logger.warn(`SerpApi search failed: ${err.message}`);
       return [];

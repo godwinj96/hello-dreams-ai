@@ -13,8 +13,12 @@ async function createSuperuser() {
     const name = process.argv[4] || 'Superuser';
 
     if (!email || !password) {
-      console.error('Usage: npm run create-superuser <email> <password> [name]');
-      console.error('Example: npm run create-superuser admin@example.com SecurePassword123! "Admin User"');
+      console.error(
+        'Usage: npm run create-superuser <email> <password> [name]',
+      );
+      console.error(
+        'Example: npm run create-superuser admin@example.com SecurePassword123! "Admin User"',
+      );
       process.exit(1);
     }
 
@@ -23,7 +27,9 @@ async function createSuperuser() {
     // Check if user already exists
     const existingUser = await userRepository.findOne({ where: { email } });
     if (existingUser) {
-      console.log(`User with email ${email} already exists. Updating to superuser...`);
+      console.log(
+        `User with email ${email} already exists. Updating to superuser...`,
+      );
       existingUser.role = Role.Superuser;
       existingUser.isActive = true;
       if (password) {
@@ -55,4 +61,3 @@ async function createSuperuser() {
 }
 
 createSuperuser();
-

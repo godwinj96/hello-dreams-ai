@@ -91,10 +91,11 @@ export class LinkedInContentService {
       };
     }
 
-    const jobTitle = resumeData.contactInfo?.linkedIn?.split('/').pop() || 
-                    resumeData.workExperience?.[0]?.jobTitle || 
-                    'Professional';
-    
+    const jobTitle =
+      resumeData.contactInfo?.linkedIn?.split('/').pop() ||
+      resumeData.workExperience?.[0]?.jobTitle ||
+      'Professional';
+
     const summary = resumeData.summary || '';
     const skills = this.extractTopSkills(resumeData, 3).join(', ');
 
@@ -111,7 +112,10 @@ Generate 2-3 headline options. Return as a JSON array of strings.`;
       const response = await openAIChatAndTrack(
         this.openAIService,
         [
-          { role: MessageRole.System, content: 'You are a LinkedIn profile optimizer.' },
+          {
+            role: MessageRole.System,
+            content: 'You are a LinkedIn profile optimizer.',
+          },
           { role: MessageRole.User, content: prompt },
         ],
         costAccumulator,
@@ -128,9 +132,10 @@ Generate 2-3 headline options. Return as a JSON array of strings.`;
       }
 
       // Fallback: split by newlines
-      const options = response.split('\n')
-        .filter(line => line.trim().length > 0)
-        .map(line => line.replace(/^\d+[.)]\s*/, '').trim())
+      const options = response
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => line.replace(/^\d+[.)]\s*/, '').trim())
         .slice(0, 3);
 
       return {
@@ -181,7 +186,10 @@ Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs ma
       const response = await openAIChatAndTrack(
         this.openAIService,
         [
-          { role: MessageRole.System, content: 'You are a LinkedIn profile optimizer.' },
+          {
+            role: MessageRole.System,
+            content: 'You are a LinkedIn profile optimizer.',
+          },
           { role: MessageRole.User, content: prompt },
         ],
         costAccumulator,
@@ -190,18 +198,25 @@ Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs ma
       return response.trim();
     } catch (error) {
       this.logger.error('Error generating About section', error);
-      return summary || 'Professional with expertise in delivering impactful results.';
+      return (
+        summary ||
+        'Professional with expertise in delivering impactful results.'
+      );
     }
   }
 
   /**
    * Extract top skills (6-10 for top skills, 15-20 for full list)
    */
-  private extractTopSkills(resumeData: ResumeData | null, limit: number = 10): string[] {
+  private extractTopSkills(
+    resumeData: ResumeData | null,
+    limit: number = 10,
+  ): string[] {
     if (!resumeData || !resumeData.skills) return [];
 
     const skills: string[] = [];
-    if (resumeData.skills.technical) skills.push(...resumeData.skills.technical);
+    if (resumeData.skills.technical)
+      skills.push(...resumeData.skills.technical);
     if (resumeData.skills.tools) skills.push(...resumeData.skills.tools);
     if (resumeData.skills.soft) skills.push(...resumeData.skills.soft);
 
@@ -228,13 +243,16 @@ Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs ma
 
     return resumeData.workExperience.map((role) => {
       const dates = `${role.startDate}${role.endDate ? ` – ${role.endDate}` : ' – Present'}`;
-      const bullets = role.achievements?.slice(0, 4) || role.responsibilities?.slice(0, 4) || [];
+      const bullets =
+        role.achievements?.slice(0, 4) ||
+        role.responsibilities?.slice(0, 4) ||
+        [];
 
       return {
         jobTitle: role.jobTitle,
         company: role.company,
         dates,
-        bullets: bullets.map(b => b.replace(/^[-•*]\s*/, '')), // Remove bullet markers
+        bullets: bullets.map((b) => b.replace(/^[-•*]\s*/, '')), // Remove bullet markers
       };
     });
   }
@@ -289,11 +307,14 @@ Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs ma
   /**
    * Extract top achievements
    */
-  private extractTopAchievements(resumeData: ResumeData | null, limit: number): string[] {
+  private extractTopAchievements(
+    resumeData: ResumeData | null,
+    limit: number,
+  ): string[] {
     if (!resumeData) return [];
 
     const achievements: string[] = [];
-    
+
     if (resumeData.keyAchievements) {
       achievements.push(...resumeData.keyAchievements);
     }
@@ -312,7 +333,9 @@ Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs ma
   /**
    * Calculate years of experience
    */
-  private calculateYearsExperience(workExperience: ResumeData['workExperience']): number {
+  private calculateYearsExperience(
+    workExperience: ResumeData['workExperience'],
+  ): number {
     if (!workExperience || workExperience.length === 0) return 0;
 
     const now = new Date();
@@ -335,17 +358,3 @@ Write in a confident, warm, straightforward tone. No clichés. 3-4 paragraphs ma
     return Math.round(totalMonths / 12);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

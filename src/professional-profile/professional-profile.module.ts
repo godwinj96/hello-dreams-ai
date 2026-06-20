@@ -11,4 +11,3 @@ import { ProfessionalProfileController } from './professional-profile.controller
   exports: [ProfessionalProfileService],
 })
 export class ProfessionalProfileModule {}
-

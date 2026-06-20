@@ -31,4 +31,3 @@ import { CreditsModule } from '../credits/credits.module';
   exports: [CareerProfileService],
 })
 export class CareerProfileModule {}
-

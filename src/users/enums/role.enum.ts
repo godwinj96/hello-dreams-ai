@@ -3,4 +3,3 @@ export enum Role {
   Admin = 'admin',
   Superuser = 'superuser',
 }
-

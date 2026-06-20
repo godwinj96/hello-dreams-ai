@@ -23,10 +23,10 @@ export class UsageMetricsDto {
   @ApiProperty({
     description: 'Actions grouped by type',
     example: {
-      'conversation_created': 200,
-      'message_sent': 800,
-      'document_generated': 300,
-      'profile_created': 200,
+      conversation_created: 200,
+      message_sent: 800,
+      document_generated: 300,
+      profile_created: 200,
     },
   })
   actionsByType: Record<string, number>;
@@ -37,9 +37,3 @@ export class UsageMetricsDto {
   })
   uniqueUsers: number;
 }
-
-
-
-
-
-

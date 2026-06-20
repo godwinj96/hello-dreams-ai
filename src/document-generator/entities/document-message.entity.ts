@@ -39,4 +39,3 @@ export class DocumentMessage {
   @CreateDateColumn()
   createdAt: Date;
 }
-

@@ -20,8 +20,13 @@ export class CostsService {
     private usersRepository: Repository<User>,
   ) {}
 
-  private getDateRange(timeRange?: TimeRangeDto): { startDate: Date; endDate: Date } {
-    const endDate = timeRange?.endDate ? new Date(timeRange.endDate) : new Date();
+  private getDateRange(timeRange?: TimeRangeDto): {
+    startDate: Date;
+    endDate: Date;
+  } {
+    const endDate = timeRange?.endDate
+      ? new Date(timeRange.endDate)
+      : new Date();
     let startDate: Date;
 
     if (timeRange?.startDate) {
@@ -60,7 +65,10 @@ export class CostsService {
         `SUM(CASE WHEN usage.metadata->>'estimated' = 'true' THEN 1 ELSE 0 END)`,
         'estimatedCallCount',
       )
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('(usage.costUsd > 0 OR usage.tokensUsed > 0)')
       .getRawOne();
 
@@ -70,7 +78,10 @@ export class CostsService {
       .addSelect('COALESCE(SUM(usage.costUsd), 0)', 'costUsd')
       .addSelect('COALESCE(SUM(usage.costNgn), 0)', 'costNgn')
       .addSelect('COUNT(*)', 'callCount')
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('usage.costUsd > 0')
       .groupBy('usage.module')
       .getRawMany();
@@ -81,7 +92,10 @@ export class CostsService {
       .addSelect('COALESCE(SUM(usage.costUsd), 0)', 'costUsd')
       .addSelect('COALESCE(SUM(usage.tokensUsed), 0)', 'tokensUsed')
       .addSelect('COUNT(*)', 'callCount')
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('usage.costUsd > 0')
       .groupBy("usage.metadata->>'operation'")
       .getRawMany();
@@ -91,7 +105,10 @@ export class CostsService {
       .select('usage.actionType', 'actionType')
       .addSelect('COALESCE(SUM(usage.costUsd), 0)', 'costUsd')
       .addSelect('COUNT(*)', 'callCount')
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('usage.costUsd > 0')
       .groupBy('usage.actionType')
       .getRawMany();
@@ -103,7 +120,10 @@ export class CostsService {
       .addSelect('user.email', 'email')
       .addSelect('COALESCE(SUM(usage.costUsd), 0)', 'costUsd')
       .addSelect('COUNT(*)', 'callCount')
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('usage.costUsd > 0')
       .groupBy('usage.userId')
       .addGroupBy('user.email')
@@ -119,7 +139,9 @@ export class CostsService {
             costUsd: readRawNumber(row, 'costUsd'),
             costNgn: readRawNumber(row, 'costNgn'),
             callCount: readRawNumber(row, 'callCount'),
-            ...(includeTokens ? { tokensUsed: readRawNumber(row, 'tokensUsed') } : {}),
+            ...(includeTokens
+              ? { tokensUsed: readRawNumber(row, 'tokensUsed') }
+              : {}),
           };
           return acc;
         },
@@ -154,7 +176,10 @@ export class CostsService {
       .addSelect('COALESCE(SUM(usage.costNgn), 0)', 'costNgn')
       .addSelect('COALESCE(SUM(usage.tokensUsed), 0)', 'tokensUsed')
       .addSelect('COUNT(*)', 'callCount')
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('(usage.costUsd > 0 OR usage.tokensUsed > 0)')
       .groupBy("TO_CHAR(usage.createdAt, 'YYYY-MM-DD')")
       .orderBy('date', 'ASC')
@@ -179,7 +204,10 @@ export class CostsService {
     operation?: string;
     actionType?: string;
     userId?: string;
-  }): Promise<{ data: UsageLedgerRowDto[]; meta: { page: number; limit: number; total: number; totalPages: number } }> {
+  }): Promise<{
+    data: UsageLedgerRowDto[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
     const { startDate, endDate } = this.getDateRange(params.timeRange);
     const page = params.page ?? 1;
     const limit = Math.min(params.limit ?? 20, 100);
@@ -188,14 +216,24 @@ export class CostsService {
     const qb = this.usageTrackingRepository
       .createQueryBuilder('usage')
       .leftJoinAndSelect('usage.user', 'user')
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('(usage.costUsd > 0 OR usage.tokensUsed > 0)');
 
-    if (params.module) qb.andWhere('usage.module = :module', { module: params.module });
-    if (params.actionType) qb.andWhere('usage.actionType = :actionType', { actionType: params.actionType });
-    if (params.userId) qb.andWhere('usage.userId = :userId', { userId: params.userId });
+    if (params.module)
+      qb.andWhere('usage.module = :module', { module: params.module });
+    if (params.actionType)
+      qb.andWhere('usage.actionType = :actionType', {
+        actionType: params.actionType,
+      });
+    if (params.userId)
+      qb.andWhere('usage.userId = :userId', { userId: params.userId });
     if (params.operation) {
-      qb.andWhere("usage.metadata->>'operation' = :operation", { operation: params.operation });
+      qb.andWhere("usage.metadata->>'operation' = :operation", {
+        operation: params.operation,
+      });
     }
 
     const [rows, total] = await qb
@@ -222,7 +260,11 @@ export class CostsService {
     actionType?: string;
     userId?: string;
   }): Promise<string> {
-    const { data } = await this.getLedger({ ...params, page: 1, limit: 10_000 });
+    const { data } = await this.getLedger({
+      ...params,
+      page: 1,
+      limit: 10_000,
+    });
     const header = [
       'id',
       'createdAt',

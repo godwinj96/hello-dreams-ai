@@ -71,17 +71,3 @@ export class LinkedInProfile {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

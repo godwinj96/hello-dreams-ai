@@ -54,4 +54,3 @@ export class CareerConversation {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

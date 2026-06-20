@@ -25,7 +25,11 @@ export class ContextIndexerService {
     resumeContent: any,
   ): Promise<{
     record: UserContextEmbedding | null;
-    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+    embeddingUsage?: {
+      model: string;
+      promptTokens: number;
+      totalTokens: number;
+    };
   }> {
     try {
       // Extract text from resume content
@@ -38,7 +42,8 @@ export class ContextIndexerService {
         return { record: null };
       }
 
-      const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingResult =
+        await this.embeddingService.generateEmbedding(text);
       const embeddingUsage = {
         model: embeddingResult.model,
         promptTokens: embeddingResult.usage.promptTokens,
@@ -61,7 +66,10 @@ export class ContextIndexerService {
           model: embeddingResult.model,
           updatedAt: new Date().toISOString(),
         };
-        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
+        return {
+          record: await this.embeddingRepository.save(existing),
+          embeddingUsage,
+        };
       }
 
       const embedding = this.embeddingRepository.create({
@@ -75,7 +83,10 @@ export class ContextIndexerService {
           createdAt: new Date().toISOString(),
         },
       });
-      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
+      return {
+        record: await this.embeddingRepository.save(embedding),
+        embeddingUsage,
+      };
     } catch (error) {
       this.logger.warn(
         `Resume embedding indexing skipped for ${resumeId} (app continues without vector index)`,
@@ -95,7 +106,11 @@ export class ContextIndexerService {
     documentContent: any,
   ): Promise<{
     record: UserContextEmbedding | null;
-    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+    embeddingUsage?: {
+      model: string;
+      promptTokens: number;
+      totalTokens: number;
+    };
   }> {
     try {
       // Extract text from document content
@@ -108,7 +123,8 @@ export class ContextIndexerService {
         return { record: null };
       }
 
-      const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingResult =
+        await this.embeddingService.generateEmbedding(text);
       const embeddingUsage = {
         model: embeddingResult.model,
         promptTokens: embeddingResult.usage.promptTokens,
@@ -131,7 +147,10 @@ export class ContextIndexerService {
           model: embeddingResult.model,
           updatedAt: new Date().toISOString(),
         };
-        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
+        return {
+          record: await this.embeddingRepository.save(existing),
+          embeddingUsage,
+        };
       }
 
       const embedding = this.embeddingRepository.create({
@@ -146,7 +165,10 @@ export class ContextIndexerService {
           createdAt: new Date().toISOString(),
         },
       });
-      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
+      return {
+        record: await this.embeddingRepository.save(embedding),
+        embeddingUsage,
+      };
     } catch (error) {
       this.logger.warn(
         `Document embedding indexing skipped for ${documentId} (app continues without vector index)`,
@@ -165,7 +187,11 @@ export class ContextIndexerService {
     personaData: any,
   ): Promise<{
     record: UserContextEmbedding | null;
-    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+    embeddingUsage?: {
+      model: string;
+      promptTokens: number;
+      totalTokens: number;
+    };
   }> {
     try {
       // Extract text from persona data
@@ -195,7 +221,8 @@ export class ContextIndexerService {
         return { record: null };
       }
 
-      const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingResult =
+        await this.embeddingService.generateEmbedding(text);
       const embeddingUsage = {
         model: embeddingResult.model,
         promptTokens: embeddingResult.usage.promptTokens,
@@ -220,7 +247,10 @@ export class ContextIndexerService {
           model: embeddingResult.model,
           updatedAt: new Date().toISOString(),
         };
-        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
+        return {
+          record: await this.embeddingRepository.save(existing),
+          embeddingUsage,
+        };
       }
 
       const embedding = this.embeddingRepository.create({
@@ -234,7 +264,10 @@ export class ContextIndexerService {
           createdAt: new Date().toISOString(),
         },
       });
-      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
+      return {
+        record: await this.embeddingRepository.save(embedding),
+        embeddingUsage,
+      };
     } catch (error) {
       this.logger.warn(
         `Persona/profile embedding indexing skipped for user ${userId} (app continues without vector index)`,
@@ -259,7 +292,11 @@ export class ContextIndexerService {
     userMessages: string[],
   ): Promise<{
     record: UserContextEmbedding | null;
-    embeddingUsage?: { model: string; promptTokens: number; totalTokens: number };
+    embeddingUsage?: {
+      model: string;
+      promptTokens: number;
+      totalTokens: number;
+    };
   }> {
     try {
       const text = userMessages
@@ -268,11 +305,14 @@ export class ContextIndexerService {
         .join('\n');
 
       if (!text) {
-        this.logger.warn(`Skipping conversation embedding for ${conversationId}: no user messages`);
+        this.logger.warn(
+          `Skipping conversation embedding for ${conversationId}: no user messages`,
+        );
         return { record: null };
       }
 
-      const embeddingResult = await this.embeddingService.generateEmbedding(text);
+      const embeddingResult =
+        await this.embeddingService.generateEmbedding(text);
       const embeddingUsage = {
         model: embeddingResult.model,
         promptTokens: embeddingResult.usage.promptTokens,
@@ -280,14 +320,25 @@ export class ContextIndexerService {
       };
 
       const existing = await this.embeddingRepository.findOne({
-        where: { userId, contentType: 'conversation', contentId: conversationId },
+        where: {
+          userId,
+          contentType: 'conversation',
+          contentId: conversationId,
+        },
       });
 
       if (existing) {
         existing.content = text;
         existing.embedding = embeddingResult.embedding;
-        existing.metadata = { ...existing.metadata, model: embeddingResult.model, updatedAt: new Date().toISOString() };
-        return { record: await this.embeddingRepository.save(existing), embeddingUsage };
+        existing.metadata = {
+          ...existing.metadata,
+          model: embeddingResult.model,
+          updatedAt: new Date().toISOString(),
+        };
+        return {
+          record: await this.embeddingRepository.save(existing),
+          embeddingUsage,
+        };
       }
 
       const embedding = this.embeddingRepository.create({
@@ -296,9 +347,15 @@ export class ContextIndexerService {
         contentId: conversationId,
         content: text,
         embedding: embeddingResult.embedding,
-        metadata: { model: embeddingResult.model, createdAt: new Date().toISOString() },
+        metadata: {
+          model: embeddingResult.model,
+          createdAt: new Date().toISOString(),
+        },
       });
-      return { record: await this.embeddingRepository.save(embedding), embeddingUsage };
+      return {
+        record: await this.embeddingRepository.save(embedding),
+        embeddingUsage,
+      };
     } catch (error) {
       this.logger.warn(
         `Conversation embedding skipped for ${conversationId} (app continues)`,
@@ -347,7 +404,10 @@ export class ContextIndexerService {
       parts.push(`Summary: ${resumeContent.summary}`);
     }
 
-    if (resumeContent.workExperience && Array.isArray(resumeContent.workExperience)) {
+    if (
+      resumeContent.workExperience &&
+      Array.isArray(resumeContent.workExperience)
+    ) {
       resumeContent.workExperience.forEach((exp: any) => {
         if (exp.jobTitle) parts.push(`Job Title: ${exp.jobTitle}`);
         if (exp.company) parts.push(`Company: ${exp.company}`);
@@ -402,13 +462,19 @@ export class ContextIndexerService {
       });
     }
 
-    if (resumeContent.certifications && Array.isArray(resumeContent.certifications)) {
+    if (
+      resumeContent.certifications &&
+      Array.isArray(resumeContent.certifications)
+    ) {
       resumeContent.certifications.forEach((c: any) => {
         if (c.name) parts.push(`Certification: ${c.name}`);
       });
     }
 
-    if (resumeContent.achievements && Array.isArray(resumeContent.achievements)) {
+    if (
+      resumeContent.achievements &&
+      Array.isArray(resumeContent.achievements)
+    ) {
       resumeContent.achievements.forEach((a: any) => {
         if (a.title) parts.push(`Achievement: ${a.title}`);
         if (a.description) parts.push(a.description);
@@ -462,10 +528,14 @@ export class ContextIndexerService {
     }
 
     if (documentContent.meta) {
-      if (documentContent.meta.targetRole) parts.push(`Target Role: ${documentContent.meta.targetRole}`);
-      if (documentContent.meta.targetCompany) parts.push(`Target Company: ${documentContent.meta.targetCompany}`);
+      if (documentContent.meta.targetRole)
+        parts.push(`Target Role: ${documentContent.meta.targetRole}`);
+      if (documentContent.meta.targetCompany)
+        parts.push(`Target Company: ${documentContent.meta.targetCompany}`);
       if (documentContent.meta.jobDescriptionSummary) {
-        parts.push(`Job summary: ${documentContent.meta.jobDescriptionSummary}`);
+        parts.push(
+          `Job summary: ${documentContent.meta.jobDescriptionSummary}`,
+        );
       }
     }
 
@@ -506,25 +576,36 @@ export class ContextIndexerService {
 
     if (personaData.persona) {
       if (personaData.persona.communicationStyle) {
-        parts.push(`Communication Style: ${personaData.persona.communicationStyle}`);
+        parts.push(
+          `Communication Style: ${personaData.persona.communicationStyle}`,
+        );
       }
       if (personaData.persona.tone) {
         parts.push(`Tone: ${personaData.persona.tone}`);
       }
       if (personaData.persona.professionalVoice) {
-        parts.push(`Professional Voice: ${personaData.persona.professionalVoice}`);
+        parts.push(
+          `Professional Voice: ${personaData.persona.professionalVoice}`,
+        );
       }
       if (personaData.persona.writingStyle) {
         parts.push(`Writing Style: ${personaData.persona.writingStyle}`);
       }
-      if (personaData.persona.personalityTraits && Array.isArray(personaData.persona.personalityTraits)) {
-        parts.push(`Personality Traits: ${personaData.persona.personalityTraits.join(', ')}`);
+      if (
+        personaData.persona.personalityTraits &&
+        Array.isArray(personaData.persona.personalityTraits)
+      ) {
+        parts.push(
+          `Personality Traits: ${personaData.persona.personalityTraits.join(', ')}`,
+        );
       }
     }
 
     if (personaData.personaData) {
       if (personaData.personaData.currentPersona) {
-        parts.push(`Current Persona: ${personaData.personaData.currentPersona}`);
+        parts.push(
+          `Current Persona: ${personaData.personaData.currentPersona}`,
+        );
       }
       if (personaData.personaData.idealPersona) {
         parts.push(`Ideal Persona: ${personaData.personaData.idealPersona}`);
@@ -533,17 +614,20 @@ export class ContextIndexerService {
 
     if (personaData.careerGoals) {
       if (personaData.careerGoals.careerAspirations) {
-        parts.push(`Career Aspirations: ${personaData.careerGoals.careerAspirations}`);
+        parts.push(
+          `Career Aspirations: ${personaData.careerGoals.careerAspirations}`,
+        );
       }
-      if (personaData.careerGoals.targetRoles && Array.isArray(personaData.careerGoals.targetRoles)) {
-        parts.push(`Target Roles: ${personaData.careerGoals.targetRoles.join(', ')}`);
+      if (
+        personaData.careerGoals.targetRoles &&
+        Array.isArray(personaData.careerGoals.targetRoles)
+      ) {
+        parts.push(
+          `Target Roles: ${personaData.careerGoals.targetRoles.join(', ')}`,
+        );
       }
     }
 
     return parts.join('\n');
   }
 }
-
-
-
-

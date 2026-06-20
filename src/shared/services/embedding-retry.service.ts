@@ -81,7 +81,9 @@ export class EmbeddingRetryService {
   }
 
   private async getIndexer(): Promise<ContextIndexerService> {
-    const { ContextIndexerService } = await import('./context-indexer.service.js');
+    const { ContextIndexerService } = await import(
+      './context-indexer.service.js'
+    );
     return this.moduleRef.get(ContextIndexerService, { strict: false });
   }
 
@@ -126,10 +128,10 @@ export class EmbeddingRetryService {
           if (attempt + 1 < this.maxAttempts) {
             this.runResumeAttempt(resumeId, userId, attempt + 1, key);
           } else {
-            this.logger.warn(
-              'Resume embedding reindex exhausted retries',
-              { resumeId, userId },
-            );
+            this.logger.warn('Resume embedding reindex exhausted retries', {
+              resumeId,
+              userId,
+            });
             this.pendingKeys.delete(key);
           }
         } catch (err) {
@@ -184,10 +186,10 @@ export class EmbeddingRetryService {
           if (attempt + 1 < this.maxAttempts) {
             this.runDocumentAttempt(documentId, userId, attempt + 1, key);
           } else {
-            this.logger.warn(
-              'Document embedding reindex exhausted retries',
-              { documentId, userId },
-            );
+            this.logger.warn('Document embedding reindex exhausted retries', {
+              documentId,
+              userId,
+            });
             this.pendingKeys.delete(key);
           }
         } catch (err) {

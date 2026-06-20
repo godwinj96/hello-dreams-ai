@@ -21,7 +21,9 @@ export class AiCostAccumulator {
   private totalTokens = 0;
   private hasEstimated = false;
 
-  constructor(private readonly ngnToUsdRate: number = DEFAULT_NGN_TO_USD_RATE) {}
+  constructor(
+    private readonly ngnToUsdRate: number = DEFAULT_NGN_TO_USD_RATE,
+  ) {}
 
   addChat(input: ChatUsageInput): CostCalculation {
     const cost = calculateChatCost(input.model, input.usage, this.ngnToUsdRate);

@@ -13,22 +13,30 @@ export class AnswerDto {
   @IsNotEmpty()
   optionId: string;
 
-  @ApiProperty({ description: 'Question text', example: 'How would you describe your communication style?' })
+  @ApiProperty({
+    description: 'Question text',
+    example: 'How would you describe your communication style?',
+  })
   @IsString()
   @IsNotEmpty()
   question: string;
 
-  @ApiProperty({ description: 'Answer text (option text)', example: 'Wait to be asked' })
+  @ApiProperty({
+    description: 'Answer text (option text)',
+    example: 'Wait to be asked',
+  })
   @IsString()
   @IsNotEmpty()
   answer: string;
 }
 
 export class SubmitAnswersDto {
-  @ApiProperty({ description: 'Array of question-answer pairs', type: [AnswerDto] })
+  @ApiProperty({
+    description: 'Array of question-answer pairs',
+    type: [AnswerDto],
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => AnswerDto)
   answers: AnswerDto[];
 }
-

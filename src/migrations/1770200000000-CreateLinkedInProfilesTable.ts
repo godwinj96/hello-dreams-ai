@@ -1,6 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateLinkedInProfilesTable1770200000000 implements MigrationInterface {
+export class CreateLinkedInProfilesTable1770200000000
+  implements MigrationInterface
+{
   name = 'CreateLinkedInProfilesTable1770200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -36,7 +38,9 @@ export class CreateLinkedInProfilesTable1770200000000 implements MigrationInterf
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "linkedin_profiles" DROP CONSTRAINT "FK_linkedin_profiles_user"`);
+    await queryRunner.query(
+      `ALTER TABLE "linkedin_profiles" DROP CONSTRAINT "FK_linkedin_profiles_user"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "linkedin_profiles"`);
   }
 }

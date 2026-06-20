@@ -85,7 +85,11 @@ describe('ResumeBuilderService sendMessage', () => {
               capturedMessages = messages;
               return Promise.resolve({
                 content: 'AI response',
-                usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+                usage: {
+                  promptTokens: 10,
+                  completionTokens: 5,
+                  totalTokens: 15,
+                },
                 model: 'gpt-4',
                 provider: 'openai',
               });
@@ -149,8 +153,9 @@ describe('ResumeBuilderService sendMessage', () => {
 
     await service.sendMessage(conversationId, userId, { content: newContent });
 
-    const userMessages = (capturedMessages as Array<{ role: string; content: string }>)
-      .filter((m) => m.role === MessageRole.User);
+    const userMessages = (
+      capturedMessages as Array<{ role: string; content: string }>
+    ).filter((m) => m.role === MessageRole.User);
 
     expect(userMessages.length).toBeGreaterThan(0);
     expect(userMessages[userMessages.length - 1].content).toBe(newContent);

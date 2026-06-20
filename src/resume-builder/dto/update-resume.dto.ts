@@ -21,4 +21,3 @@ export class PatchResumeDto {
   @IsObject()
   content?: Record<string, any>;
 }
-

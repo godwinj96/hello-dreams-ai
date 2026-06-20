@@ -36,17 +36,3 @@ export class CareerProfileConfirmationDto {
   @ApiProperty({ description: 'Timestamp of completion' })
   completedAt: Date;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

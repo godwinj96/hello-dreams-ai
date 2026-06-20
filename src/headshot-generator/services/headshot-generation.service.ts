@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStorageService } from '../../shared/services/supabase-storage.service';
-import { HeadshotStyle, HeadshotPersonaType } from '../entities/headshot-generation.entity';
+import {
+  HeadshotStyle,
+  HeadshotPersonaType,
+} from '../entities/headshot-generation.entity';
 import { ImageGenerationService } from './image-generation.service';
 
 @Injectable()
@@ -36,7 +39,9 @@ export class HeadshotGenerationService {
           personaType,
         );
 
-      this.logger.log(`Headshots generated using provider: ${generationResult.provider}`);
+      this.logger.log(
+        `Headshots generated using provider: ${generationResult.provider}`,
+      );
 
       const generatedImageUrls = await this.uploadGeneratedImages(
         generationResult.buffers,
@@ -64,7 +69,11 @@ export class HeadshotGenerationService {
     file: Express.Multer.File,
     userId: string,
   ): Promise<string> {
-    return await this.supabaseStorageService.uploadFile(file, 'headshots/original', userId);
+    return await this.supabaseStorageService.uploadFile(
+      file,
+      'headshots/original',
+      userId,
+    );
   }
 
   /**
@@ -92,11 +101,3 @@ export class HeadshotGenerationService {
     return urls;
   }
 }
-
-
-
-
-
-
-
-

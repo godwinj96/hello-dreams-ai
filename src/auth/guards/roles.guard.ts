@@ -29,9 +29,8 @@ export class RolesGuard implements CanActivate {
 
     // Get all roles the user can access based on hierarchy
     const userAccessibleRoles = this.roleHierarchy[user.role] || [];
-    
+
     // Check if any required role is in the user's accessible roles
     return requiredRoles.some((role) => userAccessibleRoles.includes(role));
   }
 }
-

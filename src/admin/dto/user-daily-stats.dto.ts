@@ -18,7 +18,10 @@ export class DailyStatDto {
 }
 
 export class UserDailyStatsDto {
-  @ApiProperty({ type: [DailyStatDto], description: 'Daily breakdown of usage stats' })
+  @ApiProperty({
+    type: [DailyStatDto],
+    description: 'Daily breakdown of usage stats',
+  })
   dailyStats: DailyStatDto[];
 
   @ApiProperty({ description: 'Total aggregated stats' })
@@ -29,8 +32,3 @@ export class UserDailyStatsDto {
     actionsCount: number;
   };
 }
-
-
-
-
-

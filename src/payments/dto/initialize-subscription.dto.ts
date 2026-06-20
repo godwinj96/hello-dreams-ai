@@ -23,7 +23,3 @@ export class InitializeSubscriptionDto {
   @IsOptional()
   metadata?: Record<string, any>;
 }
-
-
-
-

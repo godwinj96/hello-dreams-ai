@@ -15,7 +15,7 @@ async function resetMigrations() {
         AND table_name = 'migrations'
       );
     `);
-    
+
     if (tableExists[0].exists) {
       await AppDataSource.query('DELETE FROM migrations');
       console.log('Migration records cleared');
@@ -33,4 +33,3 @@ async function resetMigrations() {
 }
 
 resetMigrations();
-

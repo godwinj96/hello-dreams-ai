@@ -62,19 +62,40 @@ export class PersonaResponseDto {
   updatedAt: Date;
 }
 
+export class QuestionOptionDto {
+  @ApiProperty({ description: 'Option ID', example: '1a' })
+  id: string;
+
+  @ApiProperty({ description: 'Option text', example: 'Wait to be asked' })
+  text: string;
+}
+
 export class QuestionDto {
   @ApiProperty({ description: 'Question ID', example: '1' })
   id: string;
 
-  @ApiProperty({ description: 'Question text', example: 'How would you describe your communication style?' })
+  @ApiProperty({
+    description: 'Question text',
+    example: 'How would you describe your communication style?',
+  })
   question: string;
 
-  @ApiProperty({ description: 'Question category', required: false, example: 'communication' })
+  @ApiProperty({
+    description: 'Question category',
+    required: false,
+    example: 'communication',
+  })
   category?: string;
+
+  @ApiProperty({ description: 'Answer options', type: [QuestionOptionDto] })
+  options: QuestionOptionDto[];
 }
 
 export class CurrentPersonaDto {
-  @ApiProperty({ description: 'Current persona archetype', enum: PersonaArchetype })
+  @ApiProperty({
+    description: 'Current persona archetype',
+    enum: PersonaArchetype,
+  })
   archetype: PersonaArchetype;
 
   @ApiProperty({ description: 'How people see you' })
@@ -88,7 +109,10 @@ export class CurrentPersonaDto {
 }
 
 export class IdealPersonaDto {
-  @ApiProperty({ description: 'Ideal persona archetype', enum: PersonaArchetype })
+  @ApiProperty({
+    description: 'Ideal persona archetype',
+    enum: PersonaArchetype,
+  })
   archetype: PersonaArchetype;
 
   @ApiProperty({ description: 'Reason for ideal persona' })

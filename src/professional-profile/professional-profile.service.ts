@@ -57,7 +57,7 @@ export class ProfessionalProfileService {
     careerGoals: Partial<ProfessionalProfile['careerGoals']>,
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     profile.careerGoals = {
       ...profile.careerGoals,
       ...careerGoals,
@@ -76,7 +76,7 @@ export class ProfessionalProfileService {
     persona: Partial<ProfessionalProfile['persona']>,
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     profile.persona = {
       ...profile.persona,
       ...persona,
@@ -95,7 +95,7 @@ export class ProfessionalProfileService {
     extractedData: Partial<ProfessionalProfile['extractedData']>,
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     profile.extractedData = {
       ...profile.extractedData,
       ...extractedData,
@@ -109,7 +109,7 @@ export class ProfessionalProfileService {
     basicInfo: Partial<ProfessionalProfile['basicInfo']>,
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     profile.basicInfo = {
       ...profile.basicInfo,
       ...basicInfo,
@@ -123,7 +123,7 @@ export class ProfessionalProfileService {
     targetJob: Partial<ProfessionalProfile['targetJob']>,
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     profile.targetJob = {
       ...profile.targetJob,
       ...targetJob,
@@ -137,7 +137,7 @@ export class ProfessionalProfileService {
     cvMetadata: Partial<ProfessionalProfile['cvMetadata']>,
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     profile.cvMetadata = {
       ...profile.cvMetadata,
       ...cvMetadata,
@@ -151,7 +151,7 @@ export class ProfessionalProfileService {
     personaData: Partial<ProfessionalProfile['personaData']>,
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     profile.personaData = {
       ...profile.personaData,
       ...personaData,
@@ -187,7 +187,7 @@ export class ProfessionalProfileService {
     personaData?: any;
   }> {
     const profile = await this.getProfile(userId);
-    
+
     return {
       careerGoals: profile.careerGoals || {},
       persona: profile.persona || {},
@@ -203,7 +203,7 @@ export class ProfessionalProfileService {
     section: keyof ProfessionalProfile['completedSections'],
   ): Promise<ProfessionalProfile> {
     const profile = await this.getProfile(userId);
-    
+
     if (!profile.completedSections) {
       profile.completedSections = {};
     }
@@ -212,4 +212,3 @@ export class ProfessionalProfileService {
     return await this.profileRepository.save(profile);
   }
 }
-

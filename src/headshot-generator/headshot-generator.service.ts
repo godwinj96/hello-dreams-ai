@@ -1,7 +1,12 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { HeadshotGeneration, HeadshotStatus, HeadshotStyle, HeadshotPersonaType } from './entities/headshot-generation.entity';
+import {
+  HeadshotGeneration,
+  HeadshotStatus,
+  HeadshotStyle,
+  HeadshotPersonaType,
+} from './entities/headshot-generation.entity';
 import { HeadshotGenerationService } from './services/headshot-generation.service';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
 import { AiCostTrackingService } from '../admin/services/ai-cost-tracking.service';
@@ -27,7 +32,10 @@ export class HeadshotGeneratorService {
     userId: string,
     file: Express.Multer.File,
   ): Promise<string> {
-    const imageUrl = await this.headshotGenerationService.uploadOriginalImage(file, userId);
+    const imageUrl = await this.headshotGenerationService.uploadOriginalImage(
+      file,
+      userId,
+    );
     return imageUrl;
   }
 
@@ -44,10 +52,13 @@ export class HeadshotGeneratorService {
       // If persona type not provided, get from profile
       let finalPersonaType = personaType;
       if (!finalPersonaType) {
-        const profile = await this.professionalProfileService.getProfile(userId);
+        const profile =
+          await this.professionalProfileService.getProfile(userId);
         if (profile.personaData?.currentPersona) {
           // Map persona archetype to headshot persona type
-          finalPersonaType = this.mapPersonaToHeadshotType(profile.personaData.currentPersona as string);
+          finalPersonaType = this.mapPersonaToHeadshotType(
+            profile.personaData.currentPersona,
+          );
         } else {
           finalPersonaType = HeadshotPersonaType.TrustworthyProfessional;
         }
@@ -66,13 +77,14 @@ export class HeadshotGeneratorService {
 
       try {
         // Generate headshots
-        const generationResult = await this.headshotGenerationService.generateHeadshots(
-          originalImageUrl,
-          style,
-          finalPersonaType,
-          userId,
-          saved.id,
-        );
+        const generationResult =
+          await this.headshotGenerationService.generateHeadshots(
+            originalImageUrl,
+            style,
+            finalPersonaType,
+            userId,
+            saved.id,
+          );
 
         saved.generatedImages = generationResult.urls;
         saved.status = HeadshotStatus.Completed;
@@ -81,7 +93,10 @@ export class HeadshotGeneratorService {
 
         // Mark headshot section as complete in professional profile
         try {
-          await this.professionalProfileService.markSectionComplete(userId, 'headshot');
+          await this.professionalProfileService.markSectionComplete(
+            userId,
+            'headshot',
+          );
         } catch (err) {
           this.logger.warn('Could not mark headshot section as complete', err);
         }
@@ -105,7 +120,11 @@ export class HeadshotGeneratorService {
             personaType: finalPersonaType,
           },
         );
-        this.dashboardEventService.emitFeatureUsed(userId, 'headshot-generator', 'headshots_generated');
+        this.dashboardEventService.emitFeatureUsed(
+          userId,
+          'headshot-generator',
+          'headshots_generated',
+        );
 
         return completed;
       } catch (error) {
@@ -152,20 +171,18 @@ export class HeadshotGeneratorService {
     const lowerPersona = persona.toLowerCase();
     if (lowerPersona.includes('leader') || lowerPersona.includes('executive')) {
       return HeadshotPersonaType.ConfidentLeader;
-    } else if (lowerPersona.includes('innovator') || lowerPersona.includes('creative')) {
+    } else if (
+      lowerPersona.includes('innovator') ||
+      lowerPersona.includes('creative')
+    ) {
       return HeadshotPersonaType.InnovativeThinker;
-    } else if (lowerPersona.includes('collaborator') || lowerPersona.includes('team')) {
+    } else if (
+      lowerPersona.includes('collaborator') ||
+      lowerPersona.includes('team')
+    ) {
       return HeadshotPersonaType.ApproachableExpert;
     } else {
       return HeadshotPersonaType.TrustworthyProfessional;
     }
   }
 }
-
-
-
-
-
-
-
-

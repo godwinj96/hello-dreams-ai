@@ -11,11 +11,9 @@ export class VoiceService {
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
-    
+
     if (!apiKey) {
-      this.logger.warn(
-        'OPENAI_API_KEY not set. Voice services will not work.',
-      );
+      this.logger.warn('OPENAI_API_KEY not set. Voice services will not work.');
     } else {
       this.openai = new OpenAI({ apiKey });
     }
@@ -73,14 +71,19 @@ export class VoiceService {
       }
     } catch (error) {
       this.logger.error('Error in speechToText', error);
-      throw new BadRequestException(`Failed to transcribe audio: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to transcribe audio: ${error.message}`,
+      );
     }
   }
 
   /**
    * Convert text to speech using OpenAI TTS
    */
-  async textToSpeech(text: string, voice: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' = 'alloy'): Promise<Buffer> {
+  async textToSpeech(
+    text: string,
+    voice: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' = 'alloy',
+  ): Promise<Buffer> {
     if (!this.openai) {
       throw new BadRequestException('OpenAI API not configured');
     }
@@ -96,21 +99,9 @@ export class VoiceService {
       return buffer;
     } catch (error) {
       this.logger.error('Error in textToSpeech', error);
-      throw new BadRequestException(`Failed to generate speech: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to generate speech: ${error.message}`,
+      );
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

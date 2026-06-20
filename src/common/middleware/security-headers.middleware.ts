@@ -39,7 +39,3 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     next();
   }
 }
-
-
-
-

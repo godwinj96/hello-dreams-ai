@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AdminPaymentsService } from './admin-payments.service';
 import { Payment, PaymentStatus } from '../../payments/entities/payment.entity';
-import { Subscription, SubscriptionStatus, BillingCycle } from '../../payments/entities/subscription.entity';
+import {
+  Subscription,
+  SubscriptionStatus,
+  BillingCycle,
+} from '../../payments/entities/subscription.entity';
 import { User } from '../../users/entities/user.entity';
 
 describe('AdminPaymentsService', () => {
@@ -24,11 +28,12 @@ describe('AdminPaymentsService', () => {
   };
 
   const mockSubRepo = {
-    count: jest.fn()
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(1),
+    count: jest.fn().mockResolvedValueOnce(2).mockResolvedValueOnce(1),
     find: jest.fn().mockResolvedValue([
-      { billingCycle: BillingCycle.Monthly, status: SubscriptionStatus.Active },
+      {
+        billingCycle: BillingCycle.Monthly,
+        status: SubscriptionStatus.Active,
+      },
     ]),
     createQueryBuilder: jest.fn(() => ({
       leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -56,8 +61,16 @@ describe('AdminPaymentsService', () => {
 
   it('should calculate payment stats', async () => {
     mockPaymentRepo.find.mockResolvedValue([
-      { amount: 1000, status: PaymentStatus.Success, createdAt: new Date('2024-06-01') },
-      { amount: 500, status: PaymentStatus.Failed, createdAt: new Date('2024-06-02') },
+      {
+        amount: 1000,
+        status: PaymentStatus.Success,
+        createdAt: new Date('2024-06-01'),
+      },
+      {
+        amount: 500,
+        status: PaymentStatus.Failed,
+        createdAt: new Date('2024-06-02'),
+      },
     ]);
     mockSubRepo.count.mockResolvedValue(2);
     mockSubRepo.find.mockResolvedValue([

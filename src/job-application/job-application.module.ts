@@ -9,6 +9,7 @@ import { SerpApiAdapterService } from './services/serpapi-adapter.service';
 import { CareerjetAdapterService } from './services/careerjet-adapter.service';
 import { JSearchAdapterService } from './services/jsearch-adapter.service';
 import { RemotiveAdapterService } from './services/remotive-adapter.service';
+import { JobMatchingService } from './services/job-matching.service';
 import { JobListing } from './entities/job-listing.entity';
 import { JobApplication } from './entities/job-application.entity';
 import { ResumeData } from '../resume-builder/entities/resume-data.entity';
@@ -43,6 +44,7 @@ import { CreditsModule } from '../credits/credits.module';
     CareerjetAdapterService,
     JSearchAdapterService,
     RemotiveAdapterService,
+    JobMatchingService,
   ],
   exports: [JobApplicationService],
 })

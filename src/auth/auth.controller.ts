@@ -3,17 +3,13 @@ import {
   Post,
   Body,
   Get,
+  Query,
   UseGuards,
   Request,
   Res,
   HttpStatus,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBody,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
@@ -24,6 +20,8 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { LogoutResponseDto } from './dto/logout-response.dto';
 import { ErrorResponseDto } from './dto/error-response.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from './decorators/public.decorator';
 
 @ApiTags('auth')
@@ -264,6 +262,34 @@ export class AuthController {
   }
 
   @Public()
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Request password reset email' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password with token' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.password);
+  }
+
+  @Public()
+  @Get('verify-email')
+  @ApiOperation({ summary: 'Verify email address' })
+  async verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  @Public()
+  @Post('resend-verification')
+  @ApiOperation({ summary: 'Resend verification email' })
+  async resendVerification(@Body() dto: ForgotPasswordDto) {
+    return this.authService.resendVerification(dto.email);
+  }
+
+  @Public()
   @Get('google')
   @UseGuards(AuthGuard('google'))
   @ApiOperation({
@@ -316,8 +342,14 @@ export class AuthController {
   })
   async googleAuthRedirect(@Request() req, @Res() res: Response) {
     const result = await this.authService.validateGoogleUser(req.user);
-    // In a real app, you might want to redirect to frontend with token
-    // For now, returning JSON response
-    res.json(result);
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      process.env.CORS_ORIGIN?.split(',')[0]?.trim() ||
+      'http://localhost:5173';
+    const hash = new URLSearchParams({
+      access_token: result.access_token,
+      refresh_token: result.refresh_token,
+    }).toString();
+    res.redirect(`${frontendUrl}/auth/callback#${hash}`);
   }
 }

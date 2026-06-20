@@ -23,11 +23,18 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { HeadshotGeneratorService } from './headshot-generator.service';
-import { HeadshotGeneration, HeadshotStyle, HeadshotPersonaType } from './entities/headshot-generation.entity';
+import {
+  HeadshotGeneration,
+  HeadshotStyle,
+  HeadshotPersonaType,
+} from './entities/headshot-generation.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreditGuard } from '../common/guards/credit.guard';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
-import { GenerateHeadshotDto, PERSONA_ALIAS_MAP } from './dto/generate-headshot.dto';
+import {
+  GenerateHeadshotDto,
+  PERSONA_ALIAS_MAP,
+} from './dto/generate-headshot.dto';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB — matches Supabase headshot-originals bucket limit
@@ -106,7 +113,8 @@ image: [binary file data]
     examples: {
       example1: {
         summary: 'Upload headshot photo',
-        description: 'Upload a professional photo to use as reference for headshot generation',
+        description:
+          'Upload a professional photo to use as reference for headshot generation',
         value: {
           image: 'binary file data',
         },
@@ -121,8 +129,10 @@ image: [binary file data]
       properties: {
         imageUrl: {
           type: 'string',
-          example: 'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
-          description: 'URL of the uploaded image. Save this for use in the generate endpoint.',
+          example:
+            'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
+          description:
+            'URL of the uploaded image. Save this for use in the generate endpoint.',
         },
       },
     },
@@ -139,7 +149,10 @@ image: [binary file data]
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async uploadImage(
     @Request() req,
     @UploadedFile() file: Express.Multer.File,
@@ -148,7 +161,10 @@ image: [binary file data]
       throw new BadRequestException('No image file provided');
     }
 
-    const imageUrl = await this.headshotGeneratorService.uploadImage(req.user.id, file);
+    const imageUrl = await this.headshotGeneratorService.uploadImage(
+      req.user.id,
+      file,
+    );
     // Return both `imageUrl` (canonical) and `imageId` (frontend compatibility alias)
     return { imageUrl, imageId: imageUrl };
   }
@@ -231,8 +247,10 @@ If one provider fails, the system automatically tries the next. This ensures hig
       properties: {
         originalImageUrl: {
           type: 'string',
-          description: 'URL from the upload endpoint. Must be a valid Supabase storage URL.',
-          example: 'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
+          description:
+            'URL from the upload endpoint. Must be a valid Supabase storage URL.',
+          example:
+            'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
         },
         style: {
           type: 'string',
@@ -243,7 +261,8 @@ If one provider fails, the system automatically tries the next. This ensures hig
         personaType: {
           type: 'string',
           enum: Object.values(HeadshotPersonaType),
-          description: 'Professional persona type. Optional - will use profile persona or default if not provided.',
+          description:
+            'Professional persona type. Optional - will use profile persona or default if not provided.',
           example: HeadshotPersonaType.ConfidentLeader,
         },
       },
@@ -253,7 +272,8 @@ If one provider fails, the system automatically tries the next. This ensures hig
       corporateConfident: {
         summary: 'Corporate style with confident leader persona',
         value: {
-          originalImageUrl: 'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
+          originalImageUrl:
+            'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
           style: 'corporate',
           personaType: 'confident-leader',
         },
@@ -261,7 +281,8 @@ If one provider fails, the system automatically tries the next. This ensures hig
       modernApproachable: {
         summary: 'Modern style with approachable expert persona',
         value: {
-          originalImageUrl: 'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
+          originalImageUrl:
+            'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
           style: 'modern',
           personaType: 'approachable-expert',
         },
@@ -269,7 +290,8 @@ If one provider fails, the system automatically tries the next. This ensures hig
       executiveTrustworthy: {
         summary: 'Executive style with trustworthy professional persona',
         value: {
-          originalImageUrl: 'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
+          originalImageUrl:
+            'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
           style: 'executive',
           personaType: 'trustworthy-professional',
         },
@@ -277,7 +299,8 @@ If one provider fails, the system automatically tries the next. This ensures hig
       creativeInnovative: {
         summary: 'Creative style with innovative thinker persona',
         value: {
-          originalImageUrl: 'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
+          originalImageUrl:
+            'https://supabase.co/storage/v1/object/public/headshot-originals/user-id/image.jpg',
           style: 'creative',
           personaType: 'innovative-thinker',
         },
@@ -295,13 +318,20 @@ If one provider fails, the system automatically tries the next. This ensures hig
         userId: { type: 'string', format: 'uuid' },
         originalImageUrl: { type: 'string' },
         style: { type: 'string', enum: Object.values(HeadshotStyle) },
-        personaType: { type: 'string', enum: Object.values(HeadshotPersonaType) },
+        personaType: {
+          type: 'string',
+          enum: Object.values(HeadshotPersonaType),
+        },
         generatedImages: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Array of URLs to generated headshot images (typically 4 images)',
+          description:
+            'Array of URLs to generated headshot images (typically 4 images)',
         },
-        status: { type: 'string', enum: ['pending', 'processing', 'completed', 'failed'] },
+        status: {
+          type: 'string',
+          enum: ['pending', 'processing', 'completed', 'failed'],
+        },
         createdAt: { type: 'string', format: 'date-time' },
         updatedAt: { type: 'string', format: 'date-time' },
       },
@@ -309,33 +339,41 @@ If one provider fails, the system automatically tries the next. This ensures hig
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid image URL, missing required fields, or all providers failed',
+    description:
+      'Bad request - Invalid image URL, missing required fields, or all providers failed',
     schema: {
       type: 'object',
       properties: {
         statusCode: { type: 'number', example: 400 },
         message: {
           type: 'string',
-          example: 'Failed to fetch reference image: Reference image is required for professional headshot generation.',
+          example:
+            'Failed to fetch reference image: Reference image is required for professional headshot generation.',
         },
         error: { type: 'string', example: 'Bad Request' },
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async generateHeadshots(
     @Request() req,
     @Body() body: GenerateHeadshotDto,
   ): Promise<HeadshotGeneration> {
     // Accept both canonical and legacy field names from the frontend
     const originalImageUrl = body.originalImageUrl ?? body.imageId;
-    if (!originalImageUrl || !isURL(originalImageUrl, { require_protocol: true })) {
+    if (
+      !originalImageUrl ||
+      !isURL(originalImageUrl, { require_protocol: true })
+    ) {
       throw new BadRequestException('originalImageUrl must be a valid URL');
     }
 
     const rawPersona = body.personaType ?? body.persona;
     const personaType = rawPersona
-      ? (PERSONA_ALIAS_MAP[rawPersona] ?? rawPersona as HeadshotPersonaType)
+      ? (PERSONA_ALIAS_MAP[rawPersona] ?? (rawPersona as HeadshotPersonaType))
       : undefined;
 
     return this.headshotGeneratorService.generateHeadshots(
@@ -395,7 +433,8 @@ Retrieve details of a specific headshot generation by its ID. Use this to check 
   })
   @ApiResponse({
     status: 404,
-    description: 'Generation not found - Invalid ID or generation belongs to another user',
+    description:
+      'Generation not found - Invalid ID or generation belongs to another user',
     schema: {
       type: 'object',
       properties: {
@@ -405,7 +444,10 @@ Retrieve details of a specific headshot generation by its ID. Use this to check 
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async getGeneration(
     @Param('id', UUIDValidationPipe) id: string,
     @Request() req,
@@ -467,11 +509,11 @@ Returns an array of \`HeadshotGeneration\` objects. Each object includes:
     description: 'List of all headshot generations for the authenticated user',
     type: [HeadshotGeneration],
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
-  async getUserGenerations(
-    @Request() req,
-  ): Promise<HeadshotGeneration[]> {
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
+  async getUserGenerations(@Request() req): Promise<HeadshotGeneration[]> {
     return this.headshotGeneratorService.getUserGenerations(req.user.id);
   }
 }
-

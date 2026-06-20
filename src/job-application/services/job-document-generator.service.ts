@@ -37,7 +37,10 @@ export class JobDocumentGeneratorService {
     listing: JobListing,
     userId: string,
     costAccumulator?: AiCostAccumulator,
-  ): Promise<{ resume: Record<string, any>; coverLetter: Record<string, any> }> {
+  ): Promise<{
+    resume: Record<string, any>;
+    coverLetter: Record<string, any>;
+  }> {
     // Fetch user's latest resume data
     const resumeData = await this.getLatestResumeData(userId);
     if (!resumeData) {
@@ -108,7 +111,9 @@ export class JobDocumentGeneratorService {
     return { resume, coverLetter };
   }
 
-  private async getLatestResumeData(userId: string): Promise<ResumeData | null> {
+  private async getLatestResumeData(
+    userId: string,
+  ): Promise<ResumeData | null> {
     // ResumeData is linked via Resume entity
     const latestResume = await this.resumeRepository.findOne({
       where: { userId },
@@ -182,9 +187,15 @@ INSTRUCTIONS:
 - Do not invent experience, qualifications, or credentials the candidate does not have`;
   }
 
-  private parseOutput(raw: string): { resume: Record<string, any>; coverLetter: Record<string, any> } {
+  private parseOutput(raw: string): {
+    resume: Record<string, any>;
+    coverLetter: Record<string, any>;
+  } {
     // Strip markdown fences if model adds them
-    const cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const cleaned = raw
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim();
     try {
       const parsed = JSON.parse(cleaned);
       if (!parsed.resume || !parsed.coverLetter) {
@@ -192,8 +203,12 @@ INSTRUCTIONS:
       }
       return parsed;
     } catch (err) {
-      this.logger.error(`Failed to parse AI output: ${err.message}\nRaw: ${raw.substring(0, 500)}`);
-      throw new BadRequestException('Document generation failed — AI returned an unexpected format. Please try again.');
+      this.logger.error(
+        `Failed to parse AI output: ${err.message}\nRaw: ${raw.substring(0, 500)}`,
+      );
+      throw new BadRequestException(
+        'Document generation failed — AI returned an unexpected format. Please try again.',
+      );
     }
   }
 }

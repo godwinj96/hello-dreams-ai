@@ -14,7 +14,10 @@ import { SendDocumentMessageDto } from './dto/send-message.dto';
 import { ConversationStatus } from '../resume-builder/enums/conversation-status.enum';
 import { MessageRole } from '../resume-builder/enums/message-role.enum';
 import { DocumentType } from './enums/document-type.enum';
-import { AiChatService, ChatMessage } from '../resume-builder/services/ai-chat.service';
+import {
+  AiChatService,
+  ChatMessage,
+} from '../resume-builder/services/ai-chat.service';
 import { DocumentGeneratorService } from './services/document-generator.service';
 import {
   DocumentConversationResponseDto,
@@ -75,7 +78,8 @@ export class DocumentGeneratorServiceMain {
       status: ConversationStatus.Active,
     } as Partial<DocumentConversation>);
 
-    const savedConversation = await this.conversationRepository.save(conversation);
+    const savedConversation =
+      await this.conversationRepository.save(conversation);
 
     // Backfill any missing embeddings for this user — fire-and-forget
     this.backfillUserEmbeddings(userId).catch((err) =>
@@ -85,12 +89,16 @@ export class DocumentGeneratorServiceMain {
     // Fetch profile for the user's name (used in greeting).
     // For CoverLetter, the greeting is a static string — skip the expensive
     // embedding/context build that is only needed for AI-generated greetings.
-    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+    const profile =
+      await this.professionalProfileService.getProfileForGeneration(userId);
     const name = profile.basicInfo?.name || 'there';
     if (createDto.documentType !== DocumentType.CoverLetter) {
       // Fire-and-forget: pre-warm context for non-cover-letter AI greetings
-      this.userContextService.buildComprehensiveContext(userId, createDto.jobDescription || '')
-        .catch((err) => this.logger.warn('Context pre-warm failed (non-fatal)', err));
+      this.userContextService
+        .buildComprehensiveContext(userId, createDto.jobDescription || '')
+        .catch((err) =>
+          this.logger.warn('Context pre-warm failed (non-fatal)', err),
+        );
     }
 
     const initialGreeting = getDocumentGeneratorWelcome({
@@ -110,13 +118,21 @@ export class DocumentGeneratorServiceMain {
         conversationId: savedConversation.id,
         documentType: createDto.documentType,
       })
-      .catch((err) => console.error('Failed to track conversation creation:', err));
-    this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'conversation_created');
+      .catch((err) =>
+        console.error('Failed to track conversation creation:', err),
+      );
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'document-generator',
+      'conversation_created',
+    );
 
     return this.findOneConversation(savedConversation.id, userId);
   }
 
-  async findAllConversations(userId: string): Promise<DocumentConversationResponseDto[]> {
+  async findAllConversations(
+    userId: string,
+  ): Promise<DocumentConversationResponseDto[]> {
     const conversations = await this.conversationRepository.find({
       where: { userId },
       order: { updatedAt: 'DESC' },
@@ -141,7 +157,9 @@ export class DocumentGeneratorServiceMain {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     return this.mapConversationToDto(conversation);
@@ -157,7 +175,9 @@ export class DocumentGeneratorServiceMain {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     await this.conversationRepository.remove(conversation);
@@ -179,11 +199,15 @@ export class DocumentGeneratorServiceMain {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     if (conversation.status === ConversationStatus.Archived) {
-      throw new ForbiddenException('Cannot send messages to archived conversation');
+      throw new ForbiddenException(
+        'Cannot send messages to archived conversation',
+      );
     }
 
     // Save user message
@@ -201,10 +225,14 @@ export class DocumentGeneratorServiceMain {
     ) as ChatMessage[];
 
     // Get professional profile for context
-    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+    const profile =
+      await this.professionalProfileService.getProfileForGeneration(userId);
 
     // Add system prompt
-    const systemPrompt = this.getSystemPrompt(conversation.documentType, profile);
+    const systemPrompt = this.getSystemPrompt(
+      conversation.documentType,
+      profile,
+    );
     const messagesWithSystem: ChatMessage[] = [
       { role: MessageRole.System, content: systemPrompt },
       ...chatMessages,
@@ -212,7 +240,8 @@ export class DocumentGeneratorServiceMain {
 
     // Get AI response with usage tracking
     let aiResponse: string;
-    let usageData: { usage: any; model: string; provider: string } | null = null;
+    let usageData: { usage: any; model: string; provider: string } | null =
+      null;
     try {
       const result = await this.aiChatService.chatWithUsage(messagesWithSystem);
       aiResponse = result.content;
@@ -232,7 +261,10 @@ export class DocumentGeneratorServiceMain {
     // Check if AI is indicating document generation
     const shouldGenerateDocument = this.shouldGenerateDocument(aiResponse);
 
-    if (shouldGenerateDocument && conversation.status === ConversationStatus.Active) {
+    if (
+      shouldGenerateDocument &&
+      conversation.status === ConversationStatus.Active
+    ) {
       // Update conversation status
       conversation.status = ConversationStatus.Completed;
       await this.conversationRepository.save(conversation);
@@ -271,11 +303,18 @@ export class DocumentGeneratorServiceMain {
         { conversationId },
       );
     } else {
-      this.usageTrackingService
-        .trackAction(userId, 'message_sent', 'document-generator', { conversationId })
-        .catch((err) => console.error('Failed to track message:', err));
+      this.aiCostTrackingService.recordFlatUsage(
+        userId,
+        'message_sent',
+        'document-generator',
+        { conversationId },
+      );
     }
-    this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'message_sent');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'document-generator',
+      'message_sent',
+    );
 
     return this.mapMessageToDto(assistantMessage);
   }
@@ -296,7 +335,9 @@ export class DocumentGeneratorServiceMain {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     const messages = await this.messageRepository.find({
@@ -310,8 +351,12 @@ export class DocumentGeneratorServiceMain {
     }));
 
     // Get professional profile for context
-    const profile = await this.professionalProfileService.getProfileForGeneration(userId);
-    const systemPrompt = this.getSystemPrompt(conversation.documentType, profile);
+    const profile =
+      await this.professionalProfileService.getProfileForGeneration(userId);
+    const systemPrompt = this.getSystemPrompt(
+      conversation.documentType,
+      profile,
+    );
     const messagesWithSystem: ChatMessage[] = [
       { role: MessageRole.System, content: systemPrompt },
       ...chatMessages,
@@ -386,7 +431,11 @@ export class DocumentGeneratorServiceMain {
           version: updated.version,
         },
       );
-      this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'document_generated');
+      this.dashboardEventService.emitFeatureUsed(
+        userId,
+        'document-generator',
+        'document_generated',
+      );
 
       return this.mapDocumentToDto(updated);
     }
@@ -397,7 +446,11 @@ export class DocumentGeneratorServiceMain {
       conversation,
       messagesWithSystem,
     );
-    this.dashboardEventService.emitFeatureUsed(userId, 'document-generator', 'document_generated');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'document-generator',
+      'document_generated',
+    );
     return result;
   }
 
@@ -416,7 +469,9 @@ export class DocumentGeneratorServiceMain {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     const document = await this.documentRepository.findOne({
@@ -437,9 +492,13 @@ export class DocumentGeneratorServiceMain {
     userId: string,
     updateDto: UpdateDocumentDto,
   ): Promise<DocumentResponseDto> {
-    const doc = await this.documentRepository.findOne({ where: { conversationId } });
+    const doc = await this.documentRepository.findOne({
+      where: { conversationId },
+    });
     if (!doc) {
-      throw new NotFoundException(`Document for conversation ${conversationId} not found`);
+      throw new NotFoundException(
+        `Document for conversation ${conversationId} not found`,
+      );
     }
     if (doc.userId !== userId) {
       throw new ForbiddenException('You do not have access to this document');
@@ -457,9 +516,13 @@ export class DocumentGeneratorServiceMain {
     userId: string,
     patchDto: PatchDocumentDto,
   ): Promise<DocumentResponseDto> {
-    const doc = await this.documentRepository.findOne({ where: { conversationId } });
+    const doc = await this.documentRepository.findOne({
+      where: { conversationId },
+    });
     if (!doc) {
-      throw new NotFoundException(`Document for conversation ${conversationId} not found`);
+      throw new NotFoundException(
+        `Document for conversation ${conversationId} not found`,
+      );
     }
     if (doc.userId !== userId) {
       throw new ForbiddenException('You do not have access to this document');
@@ -476,9 +539,13 @@ export class DocumentGeneratorServiceMain {
   }
 
   async deleteDocument(conversationId: string, userId: string): Promise<void> {
-    const doc = await this.documentRepository.findOne({ where: { conversationId } });
+    const doc = await this.documentRepository.findOne({
+      where: { conversationId },
+    });
     if (!doc) {
-      throw new NotFoundException(`Document for conversation ${conversationId} not found`);
+      throw new NotFoundException(
+        `Document for conversation ${conversationId} not found`,
+      );
     }
     if (doc.userId !== userId) {
       throw new ForbiddenException('You do not have access to this document');
@@ -568,9 +635,15 @@ export class DocumentGeneratorServiceMain {
 
     // Mark section as complete
     if (conversation.documentType === DocumentType.CoverLetter) {
-      await this.professionalProfileService.markSectionComplete(userId, 'coverLetter');
+      await this.professionalProfileService.markSectionComplete(
+        userId,
+        'coverLetter',
+      );
     } else {
-      await this.professionalProfileService.markSectionComplete(userId, 'personalStatement');
+      await this.professionalProfileService.markSectionComplete(
+        userId,
+        'personalStatement',
+      );
     }
 
     return this.mapDocumentToDto(saved);
@@ -688,14 +761,17 @@ Guidelines for the statement itself:
         ? [...conversation.messages]
             .sort(
               (a, b) =>
-                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+                new Date(a.createdAt).getTime() -
+                new Date(b.createdAt).getTime(),
             )
             .map((msg) => this.mapMessageToDto(msg))
         : undefined,
     };
   }
 
-  private mapMessageToDto(message: DocumentMessage): DocumentMessageResponseDto {
+  private mapMessageToDto(
+    message: DocumentMessage,
+  ): DocumentMessageResponseDto {
     return {
       id: message.id,
       role: message.role,
@@ -752,7 +828,9 @@ Guidelines for the statement itself:
               ? String(parsed.company).trim()
               : undefined,
           jobTitle:
-            parsed.jobTitle && parsed.jobTitle !== 'null' && parsed.jobTitle !== ''
+            parsed.jobTitle &&
+            parsed.jobTitle !== 'null' &&
+            parsed.jobTitle !== ''
               ? String(parsed.jobTitle).trim()
               : undefined,
         };
@@ -806,7 +884,11 @@ Guidelines for the statement itself:
         });
         const content = resumeData ?? resume.content;
         try {
-          const result = await this.contextIndexerService.indexResume(resume.id, userId, content);
+          const result = await this.contextIndexerService.indexResume(
+            resume.id,
+            userId,
+            content,
+          );
           this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
             resumeId: resume.id,
             source: 'backfill',
@@ -828,7 +910,11 @@ Guidelines for the statement itself:
       });
       if (!exists) {
         try {
-          const result = await this.contextIndexerService.indexDocument(doc.id, userId, doc.content);
+          const result = await this.contextIndexerService.indexDocument(
+            doc.id,
+            userId,
+            doc.content,
+          );
           this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
             documentId: doc.id,
             source: 'backfill',
@@ -844,20 +930,25 @@ Guidelines for the statement itself:
       where: { userId, contentType: 'profile', contentId: userId },
     });
     if (!personaEmbedding) {
-      const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+      const profile =
+        await this.professionalProfileService.getProfileForGeneration(userId);
 
       if (
         (!profile.personaData || !profile.personaData.currentPersona) &&
         (!profile.personaData || !profile.personaData.idealPersona) &&
         (!profile.persona || Object.keys(profile.persona).length === 0)
       ) {
-        this.logger.warn('Backfill persona embedding: profile.personaData appears empty', {
-          userId,
-          hasPersona: !!profile.persona && Object.keys(profile.persona).length > 0,
-          currentPersona: profile.personaData?.currentPersona ?? null,
-          idealPersona: profile.personaData?.idealPersona ?? null,
-          appliedPersona: profile.personaData?.appliedPersona ?? null,
-        });
+        this.logger.warn(
+          'Backfill persona embedding: profile.personaData appears empty',
+          {
+            userId,
+            hasPersona:
+              !!profile.persona && Object.keys(profile.persona).length > 0,
+            currentPersona: profile.personaData?.currentPersona ?? null,
+            idealPersona: profile.personaData?.idealPersona ?? null,
+            appliedPersona: profile.personaData?.appliedPersona ?? null,
+          },
+        );
       }
 
       try {
@@ -866,11 +957,12 @@ Guidelines for the statement itself:
           personaData: profile.personaData,
           careerGoals: profile.careerGoals,
         });
-        this.recordStandaloneEmbedding(userId, result.embeddingUsage, { source: 'backfill' });
+        this.recordStandaloneEmbedding(userId, result.embeddingUsage, {
+          source: 'backfill',
+        });
       } catch (err) {
         this.logger.warn(`Backfill persona for ${userId} failed`, err);
       }
     }
   }
 }
-

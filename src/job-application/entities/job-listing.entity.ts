@@ -85,17 +85,3 @@ export class JobListing {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -11,6 +11,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
 import { RefreshTokenService } from './refresh-token.service';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { AdminModule } from '../admin/admin.module';
+import { EmailModule } from '../shared/email/email.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AdminModule } from '../admin/admin.module';
     PassportModule,
     TypeOrmModule.forFeature([RefreshToken]),
     AdminModule,
+    EmailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService): JwtModuleOptions => {
@@ -41,4 +43,3 @@ import { AdminModule } from '../admin/admin.module';
   exports: [AuthService],
 })
 export class AuthModule {}
-

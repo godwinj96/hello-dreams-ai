@@ -4,17 +4,3 @@ export enum PersonaArchetype {
   Innovator = 'innovator',
   Leader = 'leader',
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

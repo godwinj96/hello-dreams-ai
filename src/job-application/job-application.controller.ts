@@ -40,14 +40,14 @@ export class JobApplicationController {
 
   @Get('search')
   @ApiOperation({ summary: 'Search jobs from multiple external sources' })
-  async search(@Query() filters: SearchJobsDto) {
-    return this.service.search(filters);
+  async search(@Query() filters: SearchJobsDto, @Request() req) {
+    return this.service.search(filters, req.user.id);
   }
 
   @Get('listings/:id')
   @ApiOperation({ summary: 'Get a cached job listing by ID' })
-  async getListing(@Param('id') id: string) {
-    return this.service.findListingById(id);
+  async getListing(@Param('id') id: string, @Request() req) {
+    return this.service.findListingById(id, req.user.id);
   }
 
   // ── Applications CRUD ─────────────────────────────────────────────────────
@@ -57,13 +57,18 @@ export class JobApplicationController {
   @ApiQuery({ name: 'status', enum: JobApplicationStatus, required: false })
   @ApiQuery({ name: 'page', type: Number, required: false })
   @ApiQuery({ name: 'limit', type: Number, required: false })
-  async listApplications(@Request() req, @Query() filters: ApplicationsFilterDto) {
+  async listApplications(
+    @Request() req,
+    @Query() filters: ApplicationsFilterDto,
+  ) {
     return this.service.listApplications(req.user.id, filters);
   }
 
   @Post('applications')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Save a job (creates application with status=saved)' })
+  @ApiOperation({
+    summary: 'Save a job (creates application with status=saved)',
+  })
   async createApplication(@Request() req, @Body() dto: CreateApplicationDto) {
     return this.service.createApplication(req.user.id, dto);
   }
@@ -96,13 +101,17 @@ export class JobApplicationController {
   @Post('applications/:id/generate-documents')
   @ThrottleAIGeneration()
   @UseGuards(CreditGuard)
-  @ApiOperation({ summary: 'Generate tailored resume + cover letter for this application' })
+  @ApiOperation({
+    summary: 'Generate tailored resume + cover letter for this application',
+  })
   async generateDocuments(@Param('id') id: string, @Request() req) {
     return this.service.generateDocuments(id, req.user.id, req.user);
   }
 
   @Get('applications/:id/documents')
-  @ApiOperation({ summary: 'Get previously generated documents for this application' })
+  @ApiOperation({
+    summary: 'Get previously generated documents for this application',
+  })
   async getDocuments(@Param('id') id: string, @Request() req) {
     return this.service.getDocuments(id, req.user.id);
   }
@@ -111,7 +120,9 @@ export class JobApplicationController {
 
   @Post('applications/:id/apply')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Apply to the job — via ATS API or returns redirect URL' })
+  @ApiOperation({
+    summary: 'Apply to the job — via ATS API or returns redirect URL',
+  })
   async apply(@Param('id') id: string, @Request() req) {
     return this.service.applyToJob(id, req.user.id, req.user);
   }

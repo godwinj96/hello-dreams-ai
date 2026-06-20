@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsEnum, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum JobType {
@@ -24,17 +32,27 @@ export enum JobCountry {
 }
 
 export class SearchJobsDto {
-  @ApiProperty({ description: 'Job title, keywords, or skills', required: false })
+  @ApiProperty({
+    description: 'Job title, keywords, or skills',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   q?: string;
 
-  @ApiProperty({ description: 'City or region (e.g. Lagos, Remote)', required: false })
+  @ApiProperty({
+    description: 'City or region (e.g. Lagos, Remote)',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   location?: string;
 
-  @ApiProperty({ enum: JobCountry, required: false, default: JobCountry.Nigeria })
+  @ApiProperty({
+    enum: JobCountry,
+    required: false,
+    default: JobCountry.Nigeria,
+  })
   @IsOptional()
   @IsEnum(JobCountry)
   country?: JobCountry = JobCountry.Nigeria;

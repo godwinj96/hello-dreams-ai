@@ -34,7 +34,3 @@ export class InitializePaymentDto {
   @IsOptional()
   metadata?: Record<string, any>;
 }
-
-
-
-

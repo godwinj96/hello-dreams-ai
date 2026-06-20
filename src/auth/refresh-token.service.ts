@@ -11,7 +11,10 @@ export class RefreshTokenService {
     private refreshTokenRepository: Repository<RefreshToken>,
   ) {}
 
-  async generateToken(userId: string, expiresInDays: number = 7): Promise<string> {
+  async generateToken(
+    userId: string,
+    expiresInDays: number = 7,
+  ): Promise<string> {
     const token = crypto.randomBytes(40).toString('hex');
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + expiresInDays);
@@ -52,5 +55,3 @@ export class RefreshTokenService {
     });
   }
 }
-
-

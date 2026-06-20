@@ -6,9 +6,7 @@ import { ChatMessage } from '../../resume-builder/services/ai-chat.service';
 export class CareerProfileExtractorService {
   private readonly logger = new Logger(CareerProfileExtractorService.name);
 
-  constructor(
-    private professionalProfileService: ProfessionalProfileService,
-  ) {}
+  constructor(private professionalProfileService: ProfessionalProfileService) {}
 
   /**
    * Extract structured data from conversation and update professional profile
@@ -59,16 +57,20 @@ export class CareerProfileExtractorService {
     ];
 
     // Extract skills mentions
-    const skillsPattern = /(?:skills?|proficient|expert|knowledge).*?([^.!?]+)/gi;
+    const skillsPattern =
+      /(?:skills?|proficient|expert|knowledge).*?([^.!?]+)/gi;
     const skillsMatches = conversationText.match(skillsPattern);
     if (skillsMatches) {
       extracted.skills = skillsMatches
-        .map((match) => match.replace(/skills?|proficient|expert|knowledge/gi, '').trim())
+        .map((match) =>
+          match.replace(/skills?|proficient|expert|knowledge/gi, '').trim(),
+        )
         .filter((s) => s.length > 0);
     }
 
     // Extract achievements mentions
-    const achievementPattern = /(?:achieved|accomplished|award|recognition|success).*?([^.!?]+)/gi;
+    const achievementPattern =
+      /(?:achieved|accomplished|award|recognition|success).*?([^.!?]+)/gi;
     const achievementMatches = conversationText.match(achievementPattern);
     if (achievementMatches) {
       extracted.achievements = achievementMatches
@@ -77,7 +79,8 @@ export class CareerProfileExtractorService {
     }
 
     // Extract education mentions
-    const educationPattern = /(?:education|degree|university|college|graduated).*?([^.!?]+)/gi;
+    const educationPattern =
+      /(?:education|degree|university|college|graduated).*?([^.!?]+)/gi;
     const educationMatches = conversationText.match(educationPattern);
     if (educationMatches) {
       extracted.education = educationMatches
@@ -96,11 +99,16 @@ export class CareerProfileExtractorService {
     const goals: any = {};
 
     // Extract target roles
-    const rolePattern = /(?:target|want|aspire|goal).*?(?:role|position|job|title).*?([^.!?]+)/gi;
+    const rolePattern =
+      /(?:target|want|aspire|goal).*?(?:role|position|job|title).*?([^.!?]+)/gi;
     const roleMatches = conversationText.match(rolePattern);
     if (roleMatches) {
       goals.targetRoles = roleMatches
-        .map((match) => match.replace(/target|want|aspire|goal|role|position|job|title/gi, '').trim())
+        .map((match) =>
+          match
+            .replace(/target|want|aspire|goal|role|position|job|title/gi, '')
+            .trim(),
+        )
         .filter((r) => r.length > 0);
     }
 
@@ -114,7 +122,8 @@ export class CareerProfileExtractorService {
     }
 
     // Extract career aspirations
-    const aspirationPattern = /(?:aspiration|dream|goal|vision|future).*?([^.!?]+)/gi;
+    const aspirationPattern =
+      /(?:aspiration|dream|goal|vision|future).*?([^.!?]+)/gi;
     const aspirationMatches = conversationText.match(aspirationPattern);
     if (aspirationMatches) {
       goals.careerAspirations = aspirationMatches
@@ -125,4 +134,3 @@ export class CareerProfileExtractorService {
     return goals;
   }
 }
-

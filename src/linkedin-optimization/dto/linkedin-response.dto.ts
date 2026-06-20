@@ -7,7 +7,10 @@ export class LinkedInProfileResponseDto {
   @ApiProperty({ description: 'User ID', example: 'uuid' })
   userId: string;
 
-  @ApiProperty({ description: 'Headline options and selected', required: false })
+  @ApiProperty({
+    description: 'Headline options and selected',
+    required: false,
+  })
   headline?: {
     options?: string[];
     selected?: string;
@@ -57,17 +60,3 @@ export class LinkedInProfileResponseDto {
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt: Date;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

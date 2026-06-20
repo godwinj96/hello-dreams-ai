@@ -19,7 +19,9 @@ async function bootstrap() {
   app.use(new RequestIdMiddleware().use.bind(new RequestIdMiddleware()));
 
   // Apply security headers middleware globally
-  app.use(new SecurityHeadersMiddleware().use.bind(new SecurityHeadersMiddleware()));
+  app.use(
+    new SecurityHeadersMiddleware().use.bind(new SecurityHeadersMiddleware()),
+  );
 
   // Register global exception filter (prevents stack trace leakage)
   app.useGlobalFilters(new GlobalExceptionFilter());

@@ -67,17 +67,3 @@ export class HeadshotGeneration {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

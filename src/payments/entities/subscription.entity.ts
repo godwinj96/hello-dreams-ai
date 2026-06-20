@@ -11,6 +11,7 @@ import {
 import { User } from '../../users/entities/user.entity';
 
 export enum SubscriptionStatus {
+  Pending = 'pending',
   Active = 'active',
   Cancelled = 'cancelled',
   Expired = 'expired',
@@ -61,14 +62,12 @@ export class Subscription {
   @Column({ nullable: true })
   paystackCustomerCode: string;
 
+  @Column({ nullable: true })
+  paystackReference: string;
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
 }
-
-
-
-
-

@@ -22,11 +22,7 @@ import { Resume } from '../resume-builder/entities/resume.entity';
     CreditsModule,
   ],
   controllers: [LinkedInOptimizationController],
-  providers: [
-    LinkedInOptimizationService,
-    LinkedInContentService,
-  ],
+  providers: [LinkedInOptimizationService, LinkedInContentService],
   exports: [LinkedInOptimizationService],
 })
 export class LinkedInOptimizationModule {}
-

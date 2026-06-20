@@ -24,7 +24,7 @@ export const PERSONA_QUESTIONS: PersonaQuestion[] = [
       },
       {
         id: '1b',
-        text: 'Build on others\' ideas',
+        text: "Build on others' ideas",
         archetype: PersonaArchetype.Collaborator,
       },
       {
@@ -170,17 +170,3 @@ export const PERSONA_QUESTIONS: PersonaQuestion[] = [
     ],
   },
 ];
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -26,8 +26,13 @@ export class DashboardService {
     private usageTrackingService: UsageTrackingService,
   ) {}
 
-  private getDateRange(timeRange: TimeRangeDto): { startDate: Date; endDate: Date } {
-    const endDate = timeRange.endDate ? new Date(timeRange.endDate) : new Date();
+  private getDateRange(timeRange: TimeRangeDto): {
+    startDate: Date;
+    endDate: Date;
+  } {
+    const endDate = timeRange.endDate
+      ? new Date(timeRange.endDate)
+      : new Date();
     let startDate: Date;
 
     if (timeRange.startDate) {
@@ -201,7 +206,10 @@ export class DashboardService {
       .createQueryBuilder('usage')
       .select('usage.module', 'module')
       .addSelect('COALESCE(SUM(usage.costUsd), 0)', 'costUsd')
-      .where('usage.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('usage.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .andWhere('usage.costUsd > 0')
       .groupBy('usage.module')
       .getRawMany();
@@ -283,7 +291,9 @@ export class DashboardService {
     return { dau, wau, mau };
   }
 
-  async getRealTimeMetrics(userId: string): Promise<Partial<DashboardStatsDto>> {
+  async getRealTimeMetrics(
+    userId: string,
+  ): Promise<Partial<DashboardStatsDto>> {
     const now = new Date();
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 

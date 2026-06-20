@@ -35,10 +35,11 @@ export class LinkedInOptimizationService {
       const resumeData = await this.getLatestResumeData(userId);
 
       const costAccumulator = this.aiCostTrackingService.createAccumulator();
-      const sections = await this.linkedInContentService.generateLinkedInProfile(
-        resumeData,
-        costAccumulator,
-      );
+      const sections =
+        await this.linkedInContentService.generateLinkedInProfile(
+          resumeData,
+          costAccumulator,
+        );
 
       // Get or create LinkedIn profile
       let profile = await this.linkedInProfileRepository.findOne({
@@ -58,7 +59,10 @@ export class LinkedInOptimizationService {
 
       // Mark linkedin section as complete in professional profile
       try {
-        await this.professionalProfileService.markSectionComplete(userId, 'linkedin');
+        await this.professionalProfileService.markSectionComplete(
+          userId,
+          'linkedin',
+        );
       } catch (err) {
         this.logger.warn('Could not mark linkedin section as complete', err);
       }
@@ -69,7 +73,11 @@ export class LinkedInOptimizationService {
         'linkedin-optimization',
         costAccumulator,
       );
-      this.dashboardEventService.emitFeatureUsed(userId, 'linkedin-optimization', 'profile_generated');
+      this.dashboardEventService.emitFeatureUsed(
+        userId,
+        'linkedin-optimization',
+        'profile_generated',
+      );
 
       return savedProfile;
     } catch (error) {
@@ -91,7 +99,9 @@ export class LinkedInOptimizationService {
     userId: string,
     payload: Partial<LinkedInProfile>,
   ): Promise<LinkedInProfile> {
-    let profile = await this.linkedInProfileRepository.findOne({ where: { userId } });
+    let profile = await this.linkedInProfileRepository.findOne({
+      where: { userId },
+    });
     if (!profile) {
       profile = this.linkedInProfileRepository.create({ userId });
     }
@@ -103,16 +113,22 @@ export class LinkedInOptimizationService {
     userId: string,
     payload: Partial<LinkedInProfile>,
   ): Promise<LinkedInProfile> {
-    const profile = await this.linkedInProfileRepository.findOne({ where: { userId } });
+    const profile = await this.linkedInProfileRepository.findOne({
+      where: { userId },
+    });
     if (!profile) {
-      throw new NotFoundException('LinkedIn profile not found. Please generate it first.');
+      throw new NotFoundException(
+        'LinkedIn profile not found. Please generate it first.',
+      );
     }
     Object.assign(profile, payload);
     return await this.linkedInProfileRepository.save(profile);
   }
 
   async deleteProfile(userId: string): Promise<void> {
-    const profile = await this.linkedInProfileRepository.findOne({ where: { userId } });
+    const profile = await this.linkedInProfileRepository.findOne({
+      where: { userId },
+    });
     if (!profile) {
       throw new NotFoundException('LinkedIn profile not found.');
     }
@@ -132,7 +148,9 @@ export class LinkedInOptimizationService {
     });
 
     if (!profile) {
-      throw new NotFoundException('LinkedIn profile not found. Please generate it first.');
+      throw new NotFoundException(
+        'LinkedIn profile not found. Please generate it first.',
+      );
     }
 
     (profile as any)[section] = data;
@@ -142,7 +160,9 @@ export class LinkedInOptimizationService {
   /**
    * Get latest resume data for user
    */
-  private async getLatestResumeData(userId: string): Promise<ResumeData | null> {
+  private async getLatestResumeData(
+    userId: string,
+  ): Promise<ResumeData | null> {
     // Find latest resume for user
     const latestResume = await this.resumeRepository.findOne({
       where: { userId },
@@ -161,4 +181,3 @@ export class LinkedInOptimizationService {
     return resumeData;
   }
 }
-

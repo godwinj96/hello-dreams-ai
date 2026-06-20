@@ -22,7 +22,7 @@ export class EmbeddingService {
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
-    
+
     if (!apiKey) {
       this.logger.warn(
         'OPENAI_API_KEY not set. Embedding service will not work.',
@@ -162,7 +162,11 @@ export class EmbeddingService {
    */
   findMostSimilar(
     queryEmbedding: number[],
-    candidateEmbeddings: Array<{ embedding: number[]; id: string; metadata?: any }>,
+    candidateEmbeddings: Array<{
+      embedding: number[];
+      id: string;
+      metadata?: any;
+    }>,
     limit: number = 10,
     minSimilarity: number = 0.5,
   ): Array<{ id: string; similarity: number; metadata?: any }> {
@@ -222,7 +226,3 @@ export class EmbeddingService {
     return this.model;
   }
 }
-
-
-
-

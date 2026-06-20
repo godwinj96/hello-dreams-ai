@@ -1,6 +1,9 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios from 'axios';
-import { JobApplication, JobApplicationStatus } from '../entities/job-application.entity';
+import {
+  JobApplication,
+  JobApplicationStatus,
+} from '../entities/job-application.entity';
 import { JobListing } from '../entities/job-listing.entity';
 import { ApplyJobResponseDto } from '../dto/apply-job.dto';
 import { User } from '../../users/entities/user.entity';
@@ -15,10 +18,18 @@ export interface ApplyContext {
 export class JobApplyService {
   private readonly logger = new Logger(JobApplyService.name);
 
-  async apply(ctx: ApplyContext): Promise<{ result: ApplyJobResponseDto; atsApplicationId?: string; atsSubmittedAt?: Date }> {
+  async apply(ctx: ApplyContext): Promise<{
+    result: ApplyJobResponseDto;
+    atsApplicationId?: string;
+    atsSubmittedAt?: Date;
+  }> {
     const { listing } = ctx;
 
-    if (listing.atsType === 'greenhouse' && listing.atsBoardToken && listing.atsJobId) {
+    if (
+      listing.atsType === 'greenhouse' &&
+      listing.atsBoardToken &&
+      listing.atsJobId
+    ) {
       return this.applyViaGreenhouse(ctx);
     }
 
@@ -29,7 +40,9 @@ export class JobApplyService {
     // Default: redirect
     const applyUrl = listing.applicationUrl ?? listing.sourceUrl ?? null;
     if (!applyUrl) {
-      throw new BadRequestException('No application URL found for this job listing');
+      throw new BadRequestException(
+        'No application URL found for this job listing',
+      );
     }
 
     return {
@@ -41,7 +54,11 @@ export class JobApplyService {
     };
   }
 
-  private async applyViaGreenhouse(ctx: ApplyContext): Promise<{ result: ApplyJobResponseDto; atsApplicationId?: string; atsSubmittedAt?: Date }> {
+  private async applyViaGreenhouse(ctx: ApplyContext): Promise<{
+    result: ApplyJobResponseDto;
+    atsApplicationId?: string;
+    atsSubmittedAt?: Date;
+  }> {
     const { application, listing, user } = ctx;
 
     const nameParts = user.name?.split(' ') ?? [];
@@ -58,7 +75,17 @@ export class JobApplyService {
     if (application.generatedCoverLetterContent) {
       const cl = application.generatedCoverLetterContent;
       const body = cl.body ?? cl.content ?? cl.text ?? JSON.stringify(cl);
-      payload.cover_letter_text = typeof body === 'string' ? body : JSON.stringify(body);
+      payload.cover_letter_text =
+        typeof body === 'string' ? body : JSON.stringify(body);
+    }
+
+    if (application.generatedResumeContent) {
+      const resume = application.generatedResumeContent;
+      const resumeText =
+        typeof resume === 'string'
+          ? resume
+          : JSON.stringify(resume.summary ?? resume.content ?? resume);
+      payload.resume_text = resumeText;
     }
 
     try {
@@ -79,7 +106,9 @@ export class JobApplyService {
         atsSubmittedAt: new Date(),
       };
     } catch (err) {
-      this.logger.warn(`Greenhouse apply failed (${listing.atsBoardToken}/${listing.atsJobId}): ${err.message}. Falling back to redirect.`);
+      this.logger.warn(
+        `Greenhouse apply failed (${listing.atsBoardToken}/${listing.atsJobId}): ${err.message}. Falling back to redirect.`,
+      );
       const applyUrl = listing.applicationUrl ?? listing.sourceUrl ?? '';
       return {
         result: {
@@ -91,11 +120,17 @@ export class JobApplyService {
     }
   }
 
-  private async applyViaLever(ctx: ApplyContext): Promise<{ result: ApplyJobResponseDto; atsApplicationId?: string; atsSubmittedAt?: Date }> {
+  private async applyViaLever(ctx: ApplyContext): Promise<{
+    result: ApplyJobResponseDto;
+    atsApplicationId?: string;
+    atsSubmittedAt?: Date;
+  }> {
     const { application, listing, user } = ctx;
 
     // Extract company and API key from sourceUrl: https://jobs.lever.co/{company}/{jobId}?lever-origin=...
-    const leverMatch = listing.sourceUrl?.match(/jobs\.lever\.co\/([^/]+)\/([a-f0-9-]+)/);
+    const leverMatch = listing.sourceUrl?.match(
+      /jobs\.lever\.co\/([^/]+)\/([a-f0-9-]+)/,
+    );
     const company = leverMatch?.[1];
     if (!company || !listing.atsJobId) {
       return this.fallbackRedirect(listing);
@@ -128,6 +163,14 @@ export class JobApplyService {
       payload.comments = typeof body === 'string' ? body : JSON.stringify(body);
     }
 
+    if (application.generatedResumeContent) {
+      const resume = application.generatedResumeContent;
+      payload.resume =
+        typeof resume === 'string'
+          ? resume
+          : JSON.stringify(resume.summary ?? resume.content ?? resume);
+    }
+
     try {
       const { data } = await axios.post(
         `https://api.lever.co/v0/postings/${company}/${listing.atsJobId}?key=${leverKey}`,
@@ -146,12 +189,16 @@ export class JobApplyService {
         atsSubmittedAt: new Date(),
       };
     } catch (err) {
-      this.logger.warn(`Lever apply failed: ${err.message}. Falling back to redirect.`);
+      this.logger.warn(
+        `Lever apply failed: ${err.message}. Falling back to redirect.`,
+      );
       return this.fallbackRedirect(listing);
     }
   }
 
-  private fallbackRedirect(listing: JobListing): { result: ApplyJobResponseDto } {
+  private fallbackRedirect(listing: JobListing): {
+    result: ApplyJobResponseDto;
+  } {
     return {
       result: {
         method: 'redirect',

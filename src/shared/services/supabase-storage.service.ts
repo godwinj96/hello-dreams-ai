@@ -23,7 +23,9 @@ export class SupabaseStorageService {
         'Supabase credentials not configured. File storage will not work.',
       );
       this.logger.debug(`SUPABASE_URL: ${supabaseUrl ? 'set' : 'missing'}`);
-      this.logger.debug(`SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY: ${supabaseKey ? 'set' : 'missing'}`);
+      this.logger.debug(
+        `SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY: ${supabaseKey ? 'set' : 'missing'}`,
+      );
     } else {
       this.supabase = createClient(supabaseUrl, supabaseKey, {
         auth: { persistSession: false },
@@ -32,7 +34,9 @@ export class SupabaseStorageService {
         'SUPABASE_ORIGINAL_HEADSHOT_BUCKET',
         'headshot-originals',
       );
-      this.logger.log(`Supabase storage initialized with bucket: ${this.bucketName}`);
+      this.logger.log(
+        `Supabase storage initialized with bucket: ${this.bucketName}`,
+      );
     }
   }
 
@@ -64,18 +68,26 @@ export class SupabaseStorageService {
 
       if (error) {
         this.logger.error('Error uploading file to Supabase', error);
-        throw new BadRequestException(`Failed to upload file: ${error.message}`);
+        throw new BadRequestException(
+          `Failed to upload file: ${error.message}`,
+        );
       }
 
       // Bucket is private — return a signed URL valid for 1 week so the frontend
       // can display the image and the generation service can download it.
-      const { data: signedData, error: signedError } = await this.supabase.storage
-        .from(this.bucketName)
-        .createSignedUrl(fileName, 7 * 24 * 3600);
+      const { data: signedData, error: signedError } =
+        await this.supabase.storage
+          .from(this.bucketName)
+          .createSignedUrl(fileName, 7 * 24 * 3600);
 
       if (signedError || !signedData?.signedUrl) {
-        this.logger.error('Error creating signed URL after upload', signedError);
-        throw new BadRequestException(`Failed to create signed URL: ${signedError?.message}`);
+        this.logger.error(
+          'Error creating signed URL after upload',
+          signedError,
+        );
+        throw new BadRequestException(
+          `Failed to create signed URL: ${signedError?.message}`,
+        );
       }
 
       return signedData.signedUrl;
@@ -99,14 +111,18 @@ export class SupabaseStorageService {
 
     const filePath = `${folder}/${userId}/${Date.now()}-${fileName}`;
     const fileSizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
-    this.logger.log(`Uploading file: ${fileName} (${fileSizeMB} MB) to ${filePath}`);
+    this.logger.log(
+      `Uploading file: ${fileName} (${fileSizeMB} MB) to ${filePath}`,
+    );
 
     let lastError: any;
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        this.logger.debug(`Upload attempt ${attempt}/${retries} for ${fileName}`);
-        
+        this.logger.debug(
+          `Upload attempt ${attempt}/${retries} for ${fileName}`,
+        );
+
         const { data, error } = await this.supabase.storage
           .from(this.bucketName)
           .upload(filePath, buffer, {
@@ -121,24 +137,23 @@ export class SupabaseStorageService {
           // StorageApiError has 'status' property, StorageUnknownError wraps originalError
           const errorStatus = (error as any).status;
           const originalError = (error as any).originalError;
-          
-          const isRetryableError = 
+
+          const isRetryableError =
             error.message?.includes('fetch failed') ||
             error.message?.includes('network') ||
             error.message?.includes('timeout') ||
             error.message?.includes('ECONNRESET') ||
             error.message?.includes('socket') ||
-            (originalError && (
-              (originalError as any)?.code === 'UND_ERR_SOCKET' ||
-              (originalError as any)?.message?.includes('fetch failed') ||
-              (originalError as any)?.message?.includes('socket')
-            )) ||
+            (originalError &&
+              (originalError?.code === 'UND_ERR_SOCKET' ||
+                originalError?.message?.includes('fetch failed') ||
+                originalError?.message?.includes('socket'))) ||
             errorStatus === 408 || // Request Timeout
             errorStatus === 429 || // Too Many Requests
             errorStatus === 500 || // Internal Server Error
             errorStatus === 502 || // Bad Gateway
             errorStatus === 503 || // Service Unavailable
-            errorStatus === 504;   // Gateway Timeout
+            errorStatus === 504; // Gateway Timeout
 
           if (isRetryableError && attempt < retries) {
             const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Exponential backoff, max 10s
@@ -151,28 +166,38 @@ export class SupabaseStorageService {
           }
 
           this.logger.error('Error uploading buffer to Supabase', error);
-          throw new BadRequestException(`Failed to upload file: ${error.message}`);
+          throw new BadRequestException(
+            `Failed to upload file: ${error.message}`,
+          );
         }
 
         // Success!
-        this.logger.log(`Successfully uploaded ${fileName} (${fileSizeMB} MB) on attempt ${attempt}`);
+        this.logger.log(
+          `Successfully uploaded ${fileName} (${fileSizeMB} MB) on attempt ${attempt}`,
+        );
 
         // Bucket is private — return a signed URL valid for 1 week.
-        const { data: signedData, error: signedError } = await this.supabase.storage
-          .from(this.bucketName)
-          .createSignedUrl(filePath, 7 * 24 * 3600);
+        const { data: signedData, error: signedError } =
+          await this.supabase.storage
+            .from(this.bucketName)
+            .createSignedUrl(filePath, 7 * 24 * 3600);
 
         if (signedError || !signedData?.signedUrl) {
-          this.logger.error('Error creating signed URL after buffer upload', signedError);
-          throw new BadRequestException(`Failed to create signed URL: ${signedError?.message}`);
+          this.logger.error(
+            'Error creating signed URL after buffer upload',
+            signedError,
+          );
+          throw new BadRequestException(
+            `Failed to create signed URL: ${signedError?.message}`,
+          );
         }
 
         return signedData.signedUrl;
       } catch (error: any) {
         lastError = error;
-        
+
         // Check if it's a network error that we should retry
-        const isNetworkError = 
+        const isNetworkError =
           error?.message?.includes('fetch failed') ||
           error?.message?.includes('ECONNRESET') ||
           error?.message?.includes('socket') ||
@@ -190,7 +215,10 @@ export class SupabaseStorageService {
 
         // If it's the last attempt or not retryable, throw
         if (attempt === retries) {
-          this.logger.error(`Error in uploadBuffer after ${retries} attempts`, error);
+          this.logger.error(
+            `Error in uploadBuffer after ${retries} attempts`,
+            error,
+          );
           throw new BadRequestException(
             `Failed to upload file after ${retries} attempts: ${error.message || error}`,
           );
@@ -204,7 +232,10 @@ export class SupabaseStorageService {
     );
   }
 
-  async getSignedUrl(filePath: string, expiresIn: number = 3600): Promise<string> {
+  async getSignedUrl(
+    filePath: string,
+    expiresIn: number = 3600,
+  ): Promise<string> {
     if (!this.supabase) {
       throw new BadRequestException('Supabase storage not configured');
     }
@@ -216,7 +247,9 @@ export class SupabaseStorageService {
 
       if (error) {
         this.logger.error('Error creating signed URL', error);
-        throw new BadRequestException(`Failed to create signed URL: ${error.message}`);
+        throw new BadRequestException(
+          `Failed to create signed URL: ${error.message}`,
+        );
       }
 
       return data.signedUrl;
@@ -238,7 +271,9 @@ export class SupabaseStorageService {
 
       if (error) {
         this.logger.error('Error downloading file from Supabase', error);
-        throw new BadRequestException(`Failed to download file: ${error.message}`);
+        throw new BadRequestException(
+          `Failed to download file: ${error.message}`,
+        );
       }
 
       // supabase-js returns a Blob in Node runtimes as well; normalize to Buffer.
@@ -262,7 +297,9 @@ export class SupabaseStorageService {
 
       if (error) {
         this.logger.error('Error deleting file from Supabase', error);
-        throw new BadRequestException(`Failed to delete file: ${error.message}`);
+        throw new BadRequestException(
+          `Failed to delete file: ${error.message}`,
+        );
       }
     } catch (error) {
       this.logger.error('Error in deleteFile', error);
@@ -270,13 +307,3 @@ export class SupabaseStorageService {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-

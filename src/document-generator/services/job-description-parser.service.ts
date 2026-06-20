@@ -10,7 +10,13 @@ export interface ParsedJobDescription {
   requiredTools: string[];
   keyResponsibilities: string[];
   preferredExperience: string;
-  toneStyle: 'formal' | 'corporate' | 'creative' | 'startup' | 'friendly' | 'executive';
+  toneStyle:
+    | 'formal'
+    | 'corporate'
+    | 'creative'
+    | 'startup'
+    | 'friendly'
+    | 'executive';
   industry?: string;
   location?: string;
   salary?: string;
@@ -36,8 +42,10 @@ export class JobDescriptionParserService {
         requiredSkills: 'array of required skills mentioned',
         requiredTools: 'array of required tools/software mentioned',
         keyResponsibilities: 'array of key responsibilities',
-        preferredExperience: 'experience level preferred (e.g., "3-5 years", "Senior", "Entry-level")',
-        toneStyle: 'one of: formal, corporate, creative, startup, friendly, executive (based on language and style)',
+        preferredExperience:
+          'experience level preferred (e.g., "3-5 years", "Senior", "Entry-level")',
+        toneStyle:
+          'one of: formal, corporate, creative, startup, friendly, executive (based on language and style)',
         industry: 'industry or sector',
         location: 'job location',
         salary: 'salary range if mentioned',
@@ -97,30 +105,64 @@ Be thorough and accurate.`;
     const text = jobDescriptionText.toLowerCase();
 
     // Extract job title (look for patterns like "Job Title:", "Position:", "We are hiring a")
-    const titleMatch = jobDescriptionText.match(/(?:job title|position|hiring|looking for)[:\-]?\s*([^\n]+)/i);
+    const titleMatch = jobDescriptionText.match(
+      /(?:job title|position|hiring|looking for)[:\-]?\s*([^\n]+)/i,
+    );
     const jobTitle = titleMatch ? titleMatch[1].trim() : '';
 
     // Extract company name
-    const companyMatch = jobDescriptionText.match(/(?:about|company|at|join)[:\-]?\s*([A-Z][A-Za-z\s&]+)/);
+    const companyMatch = jobDescriptionText.match(
+      /(?:about|company|at|join)[:\-]?\s*([A-Z][A-Za-z\s&]+)/,
+    );
     const companyName = companyMatch ? companyMatch[1].trim() : '';
 
     // Extract skills (look for "Skills:", "Requirements:", "Must have")
-    const skillsSection = jobDescriptionText.match(/(?:skills|requirements|must have|qualifications)[:\-]?([^.]{50,500})/i);
-    const requiredSkills = skillsSection ? this.extractListItems(skillsSection[1]) : [];
+    const skillsSection = jobDescriptionText.match(
+      /(?:skills|requirements|must have|qualifications)[:\-]?([^.]{50,500})/i,
+    );
+    const requiredSkills = skillsSection
+      ? this.extractListItems(skillsSection[1])
+      : [];
 
     // Extract tools/technologies
-    const tools = ['python', 'javascript', 'react', 'node', 'aws', 'docker', 'kubernetes', 'sql', 'git'];
-    const requiredTools = tools.filter(tool => text.includes(tool));
+    const tools = [
+      'python',
+      'javascript',
+      'react',
+      'node',
+      'aws',
+      'docker',
+      'kubernetes',
+      'sql',
+      'git',
+    ];
+    const requiredTools = tools.filter((tool) => text.includes(tool));
 
     // Determine tone style
     let toneStyle: ParsedJobDescription['toneStyle'] = 'formal';
-    if (text.includes('startup') || text.includes('fast-paced') || text.includes('dynamic')) {
+    if (
+      text.includes('startup') ||
+      text.includes('fast-paced') ||
+      text.includes('dynamic')
+    ) {
       toneStyle = 'startup';
-    } else if (text.includes('creative') || text.includes('innovative') || text.includes('design')) {
+    } else if (
+      text.includes('creative') ||
+      text.includes('innovative') ||
+      text.includes('design')
+    ) {
       toneStyle = 'creative';
-    } else if (text.includes('executive') || text.includes('leadership') || text.includes('strategic')) {
+    } else if (
+      text.includes('executive') ||
+      text.includes('leadership') ||
+      text.includes('strategic')
+    ) {
       toneStyle = 'executive';
-    } else if (text.includes('team') || text.includes('collaborative') || text.includes('friendly')) {
+    } else if (
+      text.includes('team') ||
+      text.includes('collaborative') ||
+      text.includes('friendly')
+    ) {
       toneStyle = 'friendly';
     } else if (text.includes('corporate') || text.includes('enterprise')) {
       toneStyle = 'corporate';
@@ -145,9 +187,9 @@ Be thorough and accurate.`;
     // Match bullet points, numbered lists, or dash-separated items
     const matches = text.match(/(?:[-•*]\s*|\d+[.)]\s*)([^\n]+)/g);
     if (matches) {
-      items.push(...matches.map(m => m.replace(/^[-•*\d.)\s]+/, '').trim()));
+      items.push(...matches.map((m) => m.replace(/^[-•*\d.)\s]+/, '').trim()));
     }
-    return items.filter(item => item.length > 0);
+    return items.filter((item) => item.length > 0);
   }
 
   /**
@@ -165,17 +207,3 @@ Be thorough and accurate.`;
     return 'formal';
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

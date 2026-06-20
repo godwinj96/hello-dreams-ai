@@ -1,11 +1,17 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { AiChatService, ChatMessage } from '../../resume-builder/services/ai-chat.service';
+import {
+  AiChatService,
+  ChatMessage,
+} from '../../resume-builder/services/ai-chat.service';
 import { MessageRole } from '../../resume-builder/enums/message-role.enum';
 import { DocumentType } from '../enums/document-type.enum';
 import { ProfessionalProfileService } from '../../professional-profile/professional-profile.service';
 import { CoverLetterGeneratorService } from './cover-letter-generator.service';
 import { JobDescriptionParserService } from './job-description-parser.service';
-import { buildJsonOnlyInstruction, parseJsonObject } from '../../shared/utils/json-llm.util';
+import {
+  buildJsonOnlyInstruction,
+  parseJsonObject,
+} from '../../shared/utils/json-llm.util';
 import { UserContextService } from './user-context.service';
 import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
 
@@ -63,18 +69,21 @@ export class DocumentGeneratorService {
       // embedding header/footer in the paragraph text (which causes duplicates
       // when the frontend template also renders the sender block and signature).
       if (documentType === DocumentType.CoverLetter) {
-        const coverSections = await this.coverLetterGenerator.generateCoverLetterSections(
-          userId,
-          jobDescription,
-          targetJobTitle,
-          targetCompany,
-          costAccumulator,
-        );
+        const coverSections =
+          await this.coverLetterGenerator.generateCoverLetterSections(
+            userId,
+            jobDescription,
+            targetJobTitle,
+            targetCompany,
+            costAccumulator,
+          );
         return {
           documentType,
           meta: {
-            targetRole: targetJobTitle || coverSections.companyAddress.companyName,
-            targetCompany: targetCompany || coverSections.companyAddress.companyName,
+            targetRole:
+              targetJobTitle || coverSections.companyAddress.companyName,
+            targetCompany:
+              targetCompany || coverSections.companyAddress.companyName,
             jobDescriptionSummary: jobDescription?.slice(0, 140),
             sender: {
               name: coverSections.header.name,
@@ -87,25 +96,36 @@ export class DocumentGeneratorService {
             { heading: 'Opening', paragraphs: [coverSections.opening] },
             { heading: 'Core', paragraphs: [coverSections.core] },
             { heading: 'Skills', paragraphs: [coverSections.skillsMatch] },
-            { heading: 'Cultural Fit', paragraphs: [coverSections.culturalFit] },
+            {
+              heading: 'Cultural Fit',
+              paragraphs: [coverSections.culturalFit],
+            },
             { heading: 'Closing', paragraphs: [coverSections.closing] },
           ],
-          closing: { signoff: 'Warm regards', signature: coverSections.signature },
+          closing: {
+            signoff: 'Warm regards',
+            signature: coverSections.signature,
+          },
         };
       }
 
       // For personal statements, use the existing flow
       // Get comprehensive context including all user data
-      const comprehensiveContext = await this.userContextService.buildComprehensiveContext(
-        userId,
-        jobDescription,
-      );
+      const comprehensiveContext =
+        await this.userContextService.buildComprehensiveContext(
+          userId,
+          jobDescription,
+        );
 
       // Get professional profile data
-      const profile = await this.professionalProfileService.getProfileForGeneration(userId);
+      const profile =
+        await this.professionalProfileService.getProfileForGeneration(userId);
 
       // Build context from profile (enhanced with comprehensive context)
-      const profileContext = this.buildProfileContext(profile, comprehensiveContext);
+      const profileContext = this.buildProfileContext(
+        profile,
+        comprehensiveContext,
+      );
 
       // Create generation prompt based on document type
       const generatePrompt = this.getGenerationPrompt(
@@ -126,7 +146,8 @@ export class DocumentGeneratorService {
       ];
 
       // Get the AI response (the generated document)
-      const draftResult = await this.aiChatService.chatWithUsage(messagesWithPrompt);
+      const draftResult =
+        await this.aiChatService.chatWithUsage(messagesWithPrompt);
       if (costAccumulator) {
         costAccumulator.addChat({
           operation: 'chat',
@@ -157,10 +178,7 @@ Return ONLY JSON.`;
           { heading: 'Opening', paragraphs: ['Dear Hiring Manager, ...'] },
           {
             heading: 'Body',
-            paragraphs: [
-              'I led...',
-              'I improved...',
-            ],
+            paragraphs: ['I led...', 'I improved...'],
           },
           { heading: 'Closing', paragraphs: ['Thank you for your time.'] },
         ],
@@ -187,9 +205,12 @@ Return ONLY JSON.`;
       }
       const structuredResponse = structuredResult.content;
 
-      const parsed = parseJsonObject<StructuredDocumentJson>(structuredResponse);
+      const parsed =
+        parseJsonObject<StructuredDocumentJson>(structuredResponse);
       if (!parsed.ok || !parsed.data) {
-        throw new BadRequestException(parsed.error || 'Invalid JSON from model.');
+        throw new BadRequestException(
+          parsed.error || 'Invalid JSON from model.',
+        );
       }
 
       return parsed.data;
@@ -199,7 +220,10 @@ Return ONLY JSON.`;
     }
   }
 
-  private buildProfileContext(profile: any, comprehensiveContext?: string): string {
+  private buildProfileContext(
+    profile: any,
+    comprehensiveContext?: string,
+  ): string {
     let context = '';
 
     // Add comprehensive context first (includes all resumes, documents, persona)
@@ -267,4 +291,3 @@ ${jobDescription ? `Job Description:\n${jobDescription}` : ''}
 Generate a complete ${documentType === DocumentType.CoverLetter ? 'cover letter' : 'personal statement'} now. Ensure the response is concise and structured.`;
   }
 }
-

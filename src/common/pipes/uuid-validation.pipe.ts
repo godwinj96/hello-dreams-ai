@@ -17,9 +17,3 @@ export class UUIDValidationPipe implements PipeTransform<string, string> {
     return value;
   }
 }
-
-
-
-
-
-

@@ -45,7 +45,10 @@ export class PaginationMetaDto {
   @ApiProperty({ description: 'Total number of pages', example: 5 })
   totalPages: number;
 
-  @ApiProperty({ description: 'Whether there is a previous page', example: false })
+  @ApiProperty({
+    description: 'Whether there is a previous page',
+    example: false,
+  })
   hasPrevious: boolean;
 
   @ApiProperty({ description: 'Whether there is a next page', example: true })
@@ -59,4 +62,3 @@ export class PaginatedResponseDto<T> {
   @ApiProperty({ description: 'Pagination metadata', type: PaginationMetaDto })
   meta: PaginationMetaDto;
 }
-

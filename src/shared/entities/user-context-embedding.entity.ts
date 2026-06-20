@@ -50,7 +50,3 @@ export class UserContextEmbedding {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-
-
-
-

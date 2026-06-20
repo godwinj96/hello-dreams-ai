@@ -39,9 +39,3 @@ export class TimeRangeDto {
   @IsDateString()
   endDate?: string;
 }
-
-
-
-
-
-

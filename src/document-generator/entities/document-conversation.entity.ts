@@ -70,4 +70,3 @@ export class DocumentConversation {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

@@ -59,7 +59,9 @@ I'll help you create an ATS-friendly, achievement-driven resume through a natura
 What is your full name as you want it shown on your CV?`;
 }
 
-export function getDocumentGeneratorWelcome(ctx: WelcomeMessageContext): string {
+export function getDocumentGeneratorWelcome(
+  ctx: WelcomeMessageContext,
+): string {
   const name = ctx.name?.trim() || 'there';
 
   if (ctx.documentType === DocumentType.CoverLetter) {

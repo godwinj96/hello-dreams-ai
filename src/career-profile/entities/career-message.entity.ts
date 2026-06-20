@@ -37,4 +37,3 @@ export class CareerMessage {
   @CreateDateColumn()
   createdAt: Date;
 }
-

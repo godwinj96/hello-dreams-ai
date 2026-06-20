@@ -1,7 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { AiChatService, ChatMessage } from './ai-chat.service';
 import { MessageRole } from '../enums/message-role.enum';
-import { buildJsonOnlyInstruction, parseJsonObject } from '../../shared/utils/json-llm.util';
+import {
+  buildJsonOnlyInstruction,
+  parseJsonObject,
+} from '../../shared/utils/json-llm.util';
 import { AiCostAccumulator } from '../../shared/utils/ai-cost-accumulator';
 
 // Regex that matches bracket-style placeholder text, e.g. [Email Address], [Phone Number]
@@ -14,7 +17,9 @@ const PLACEHOLDER_RE = /^\[.+\]$/;
  */
 function stripPlaceholders<T>(value: T): T {
   if (typeof value === 'string') {
-    return PLACEHOLDER_RE.test(value.trim()) ? (undefined as unknown as T) : value;
+    return PLACEHOLDER_RE.test(value.trim())
+      ? (undefined as unknown as T)
+      : value;
   }
   if (Array.isArray(value)) {
     return value
@@ -128,7 +133,8 @@ All sections are objects; subsections are nested objects/arrays.`;
             portfolio: 'https://janedoe.com',
           },
         },
-        summary: 'Product manager with 8+ years delivering B2B SaaS outcomes...',
+        summary:
+          'Product manager with 8+ years delivering B2B SaaS outcomes...',
         workExperience: [
           {
             jobTitle: 'Senior Product Manager',
@@ -143,7 +149,11 @@ All sections are objects; subsections are nested objects/arrays.`;
           },
         ],
         education: [
-          { degree: 'B.Sc. Computer Science', institution: 'UT Austin', graduationYear: 2016 },
+          {
+            degree: 'B.Sc. Computer Science',
+            institution: 'UT Austin',
+            graduationYear: 2016,
+          },
         ],
         skills: {
           core: ['Product Strategy', 'A/B Testing'],
@@ -158,11 +168,22 @@ All sections are objects; subsections are nested objects/arrays.`;
             technologies: ['Node.js', 'Postgres', 'React'],
           },
         ],
-        certifications: [{ name: 'CSPO', issuingOrganization: 'Scrum Alliance', date: '2022' }],
-        achievements: [{ title: 'President Club', description: 'Top 5% PM impact', date: '2023' }],
+        certifications: [
+          { name: 'CSPO', issuingOrganization: 'Scrum Alliance', date: '2022' },
+        ],
+        achievements: [
+          {
+            title: 'President Club',
+            description: 'Top 5% PM impact',
+            date: '2023',
+          },
+        ],
       };
 
-      const systemPrompt = buildJsonOnlyInstruction(resumeSchemaDescription, example);
+      const systemPrompt = buildJsonOnlyInstruction(
+        resumeSchemaDescription,
+        example,
+      );
 
       const messagesWithPrompt: ChatMessage[] = [
         { role: MessageRole.System, content: systemPrompt },
@@ -174,7 +195,10 @@ All sections are objects; subsections are nested objects/arrays.`;
         },
       ];
 
-      const chatResult = await this.aiChatService.chatWithUsage(messagesWithPrompt, 0.3);
+      const chatResult = await this.aiChatService.chatWithUsage(
+        messagesWithPrompt,
+        0.3,
+      );
       if (costAccumulator) {
         costAccumulator.addChat({
           operation: 'chat',
@@ -187,7 +211,9 @@ All sections are objects; subsections are nested objects/arrays.`;
       const parsed = parseJsonObject<ResumeJson>(chatResult.content);
 
       if (!parsed.ok || !parsed.data) {
-        throw new BadRequestException(parsed.error || 'Model did not return valid JSON.');
+        throw new BadRequestException(
+          parsed.error || 'Model did not return valid JSON.',
+        );
       }
 
       return stripPlaceholders(parsed.data);

@@ -8,6 +8,8 @@ import { SerpApiAdapterService } from './serpapi-adapter.service';
 import { CareerjetAdapterService } from './careerjet-adapter.service';
 import { JSearchAdapterService } from './jsearch-adapter.service';
 import { RemotiveAdapterService } from './remotive-adapter.service';
+import { JobMatchingService } from './job-matching.service';
+import { Resume } from '../../resume-builder/entities/resume.entity';
 
 export interface NormalizedJobListing {
   externalId: string | null;
@@ -33,6 +35,11 @@ export interface NormalizedJobListing {
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+export interface UserMatchContext {
+  userSkills: string[];
+  resumeText: string;
+}
+
 @Injectable()
 export class JobSearchService {
   private readonly logger = new Logger(JobSearchService.name);
@@ -40,25 +47,30 @@ export class JobSearchService {
   constructor(
     @InjectRepository(JobListing)
     private listingRepository: Repository<JobListing>,
+    @InjectRepository(Resume)
+    private resumeRepository: Repository<Resume>,
     private serpApi: SerpApiAdapterService,
     private careerjet: CareerjetAdapterService,
     private jSearch: JSearchAdapterService,
     private remotive: RemotiveAdapterService,
+    private jobMatchingService: JobMatchingService,
   ) {}
 
   async search(
     filters: SearchJobsDto,
+    userId?: string,
   ): Promise<{ data: JobListingResponseDto[]; meta: any }> {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 20;
 
     // Fan out to all sources in parallel; failures are silently skipped
-    const [serpRes, careerjetRes, jsearchRes, remotiveRes] = await Promise.allSettled([
-      this.serpApi.search(filters),
-      this.careerjet.search(filters),
-      this.jSearch.search(filters),
-      this.remotive.search(filters),
-    ]);
+    const [serpRes, careerjetRes, jsearchRes, remotiveRes] =
+      await Promise.allSettled([
+        this.serpApi.search(filters),
+        this.careerjet.search(filters),
+        this.jSearch.search(filters),
+        this.remotive.search(filters),
+      ]);
 
     const allRaw: NormalizedJobListing[] = [
       ...(serpRes.status === 'fulfilled' ? serpRes.value : []),
@@ -77,16 +89,33 @@ export class JobSearchService {
     });
 
     // Upsert into DB for caching and later reference
-    const listings = await this.upsertListings(unique);
+    let listings = await this.upsertListings(unique);
+
+    const matchContext = userId
+      ? await this.getUserMatchContext(userId)
+      : null;
+
+    const scoredListings = listings.map((listing) => ({
+      listing,
+      matchScore: this.computeMatchScoreForListing(listing, matchContext),
+    }));
+
+    if (userId) {
+      scoredListings.sort(
+        (a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0),
+      );
+    }
 
     // Apply in-memory filters not handled by all adapters
-    let filtered = listings;
+    let filtered = scoredListings;
     if (filters.remote) {
-      filtered = filtered.filter((l) => l.isRemote);
+      filtered = filtered.filter(({ listing }) => listing.isRemote);
     }
     if (filters.experienceLevel) {
       filtered = filtered.filter(
-        (l) => !l.experienceLevel || l.experienceLevel === filters.experienceLevel,
+        ({ listing }) =>
+          !listing.experienceLevel ||
+          listing.experienceLevel === filters.experienceLevel,
       );
     }
 
@@ -94,7 +123,9 @@ export class JobSearchService {
     const paged = filtered.slice((page - 1) * limit, page * limit);
 
     return {
-      data: paged.map((l) => this.toDto(l)),
+      data: paged.map(({ listing, matchScore }) =>
+        this.toDto(listing, matchScore),
+      ),
       meta: {
         page,
         limit,
@@ -102,16 +133,66 @@ export class JobSearchService {
         totalPages: Math.ceil(total / limit),
         hasPrevious: page > 1,
         hasNext: page < Math.ceil(total / limit),
+        sourcesConfigured: {
+          serpapi: Boolean(process.env.SERPAPI_API_KEY),
+          careerjet: Boolean(process.env.CAREERJET_API_KEY),
+          jsearch: Boolean(process.env.JSEARCH_RAPIDAPI_KEY),
+          remotive: true,
+        },
       },
     };
   }
 
-  async findById(id: string): Promise<JobListingResponseDto | null> {
+  async findById(
+    id: string,
+    userId?: string,
+  ): Promise<JobListingResponseDto | null> {
     const listing = await this.listingRepository.findOne({ where: { id } });
-    return listing ? this.toDto(listing) : null;
+    if (!listing) return null;
+
+    const matchContext = userId
+      ? await this.getUserMatchContext(userId)
+      : null;
+    const matchScore = this.computeMatchScoreForListing(listing, matchContext);
+
+    return this.toDto(listing, matchScore);
   }
 
-  private async upsertListings(jobs: NormalizedJobListing[]): Promise<JobListing[]> {
+  async getUserMatchContext(
+    userId: string,
+  ): Promise<UserMatchContext | null> {
+    const resumes = await this.resumeRepository.find({
+      where: { userId },
+      order: { updatedAt: 'DESC' },
+      take: 1,
+    });
+    const resume = resumes[0];
+    if (!resume) return null;
+
+    const resumeContent = resume.content as Record<string, any> | undefined;
+    return {
+      userSkills: resumeContent?.skills ?? [],
+      resumeText: JSON.stringify(resumeContent ?? {}),
+    };
+  }
+
+  computeMatchScoreForListing(
+    listing: JobListing,
+    matchContext: UserMatchContext | null,
+  ): number | null {
+    if (!matchContext) return null;
+
+    return this.jobMatchingService.computeMatchScore(
+      matchContext.userSkills,
+      matchContext.resumeText,
+      listing.skills,
+      listing.description,
+    );
+  }
+
+  private async upsertListings(
+    jobs: NormalizedJobListing[],
+  ): Promise<JobListing[]> {
     const results: JobListing[] = [];
     const now = new Date();
 
@@ -135,7 +216,9 @@ export class JobSearchService {
           // Only refresh if cache is stale
           const cacheAge = now.getTime() - (existing.cachedAt?.getTime() ?? 0);
           if (cacheAge > CACHE_TTL_MS) {
-            Object.assign(existing, this.toEntityFields(job), { cachedAt: now });
+            Object.assign(existing, this.toEntityFields(job), {
+              cachedAt: now,
+            });
             results.push(await this.listingRepository.save(existing));
           } else {
             results.push(existing);
@@ -184,7 +267,10 @@ export class JobSearchService {
     };
   }
 
-  private toDto(listing: JobListing): JobListingResponseDto {
+  private toDto(
+    listing: JobListing,
+    matchScore: number | null = null,
+  ): JobListingResponseDto {
     return {
       id: listing.id,
       externalId: listing.externalId ?? null,
@@ -200,7 +286,7 @@ export class JobSearchService {
       sourceUrl: listing.sourceUrl ?? null,
       applicationUrl: listing.applicationUrl ?? null,
       postedDate: listing.postedDate ?? null,
-      matchScore: listing.matchScore ?? null,
+      matchScore,
       isRemote: listing.isRemote,
       country: listing.country ?? null,
       atsType: listing.atsType ?? null,

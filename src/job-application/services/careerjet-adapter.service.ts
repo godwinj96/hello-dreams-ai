@@ -65,7 +65,9 @@ export class CareerjetAdapterService {
       sourceUrl: job.url ?? null,
       applicationUrl: job.url ?? null,
       postedDate: job.date ? new Date(job.date) : null,
-      isRemote: (job.title ?? '').toLowerCase().includes('remote') || (job.locations ?? '').toLowerCase().includes('remote'),
+      isRemote:
+        (job.title ?? '').toLowerCase().includes('remote') ||
+        (job.locations ?? '').toLowerCase().includes('remote'),
       country: null,
       atsType: this.detectAts(job.url),
       atsBoardToken: this.extractBoardToken(job.url),

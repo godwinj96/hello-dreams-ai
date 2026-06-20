@@ -8,7 +8,8 @@ export class ApplicationResponseDto {
   @ApiProperty() id: string;
   @ApiProperty() userId: string;
   @ApiProperty() jobListingId: string;
-  @ApiProperty({ type: () => JobListingResponseDto, nullable: true }) jobListing: JobListingResponseDto | null;
+  @ApiProperty({ type: () => JobListingResponseDto, nullable: true })
+  jobListing: JobListingResponseDto | null;
   @ApiProperty({ enum: JobApplicationStatus }) status: JobApplicationStatus;
   @ApiProperty({ nullable: true }) appliedAt: Date | null;
   @ApiProperty({ nullable: true }) customCvId: string | null;
@@ -16,10 +17,19 @@ export class ApplicationResponseDto {
   @ApiProperty({ nullable: true }) notes: string | null;
   @ApiProperty({ nullable: true }) atsApplicationId: string | null;
   @ApiProperty({ nullable: true }) atsSubmittedAt: Date | null;
-  @ApiProperty({ description: 'True when both resume + cover letter have been generated', nullable: false })
+  @ApiProperty({
+    description: 'True when both resume + cover letter have been generated',
+    nullable: false,
+  })
   hasGeneratedDocuments: boolean;
-  @ApiProperty({ nullable: true }) generatedResumeContent: Record<string, any> | null;
-  @ApiProperty({ nullable: true }) generatedCoverLetterContent: Record<string, any> | null;
+  @ApiProperty({ nullable: true }) generatedResumeContent: Record<
+    string,
+    any
+  > | null;
+  @ApiProperty({ nullable: true }) generatedCoverLetterContent: Record<
+    string,
+    any
+  > | null;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 }

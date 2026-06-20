@@ -25,7 +25,9 @@ export const buildJsonOnlyInstruction = (
 /**
  * Parses and validates that the payload is a JSON object (not an array/string).
  */
-export const parseJsonObject = <T = any>(raw: string): JsonValidationResult<T> => {
+export const parseJsonObject = <T = any>(
+  raw: string,
+): JsonValidationResult<T> => {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -36,6 +38,3 @@ export const parseJsonObject = <T = any>(raw: string): JsonValidationResult<T> =
     return { ok: false, error: 'Invalid JSON returned from model.' };
   }
 };
-
-
-

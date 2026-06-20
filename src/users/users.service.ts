@@ -38,6 +38,38 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { googleId } });
   }
 
+  async findByPasswordResetToken(tokenHash: string): Promise<User | null> {
+    return this.usersRepository.findOne({
+      where: { passwordResetToken: tokenHash },
+    });
+  }
+
+  async findByEmailVerificationToken(tokenHash: string): Promise<User | null> {
+    return this.usersRepository.findOne({
+      where: { emailVerificationToken: tokenHash },
+    });
+  }
+
+  async updateAuthTokens(
+    id: string,
+    data: Partial<
+      Pick<
+        User,
+        | 'emailVerified'
+        | 'emailVerificationToken'
+        | 'emailVerificationExpires'
+        | 'passwordResetToken'
+        | 'passwordResetExpires'
+      >
+    >,
+  ): Promise<void> {
+    await this.usersRepository.update(id, data);
+  }
+
+  async updatePassword(id: string, hashedPassword: string): Promise<void> {
+    await this.usersRepository.update(id, { password: hashedPassword });
+  }
+
   async create(userData: Partial<User>): Promise<User> {
     const user = this.usersRepository.create(userData);
     return this.usersRepository.save(user);
@@ -69,7 +101,9 @@ export class UsersService {
     const targetRole = adminData.role || Role.Admin;
 
     if (targetRole === Role.Superuser && requester.role !== Role.Superuser) {
-      throw new ForbiddenException('Only superusers can create superuser accounts');
+      throw new ForbiddenException(
+        'Only superusers can create superuser accounts',
+      );
     }
 
     const existingUser = await this.findByEmail(adminData.email);
@@ -123,15 +157,24 @@ export class UsersService {
     }
 
     if (targetRole === Role.Superuser && requester.role !== Role.Superuser) {
-      throw new ForbiddenException('Only superusers can promote users to superuser');
+      throw new ForbiddenException(
+        'Only superusers can promote users to superuser',
+      );
     }
 
-    if (targetUser.role === Role.Superuser && targetRole !== Role.Superuser && targetUserId !== userId) {
+    if (
+      targetUser.role === Role.Superuser &&
+      targetRole !== Role.Superuser &&
+      targetUserId !== userId
+    ) {
       throw new ForbiddenException('Cannot demote another superuser');
     }
 
     const previousRole = targetUser.role;
-    const updated = await this.update(targetUserId, { role: targetRole, isActive: true });
+    const updated = await this.update(targetUserId, {
+      role: targetRole,
+      isActive: true,
+    });
 
     await this.auditLogService.log({
       actorId: requester.id,
@@ -166,7 +209,9 @@ export class UsersService {
     }
 
     if (targetUser.role === Role.Superuser) {
-      throw new BadRequestException('Cannot remove superuser role. Use promote endpoint to change role.');
+      throw new BadRequestException(
+        'Cannot remove superuser role. Use promote endpoint to change role.',
+      );
     }
 
     if (targetUser.id === userId) {
@@ -222,7 +267,9 @@ export class UsersService {
     await this.auditLogService.log({
       actorId: requester.id,
       actorEmail: requester.email,
-      action: isActive ? AuditAction.UserActivated : AuditAction.UserDeactivated,
+      action: isActive
+        ? AuditAction.UserActivated
+        : AuditAction.UserDeactivated,
       targetType: 'user',
       targetId: targetUserId,
       metadata: { email: targetUser.email, isActive },
@@ -232,7 +279,10 @@ export class UsersService {
     return toUserResponseDto(updated);
   }
 
-  async getUserById(userId: string, targetUserId: string): Promise<UserResponseDto> {
+  async getUserById(
+    userId: string,
+    targetUserId: string,
+  ): Promise<UserResponseDto> {
     const requester = await this.findOne(userId);
     if (!requester) {
       throw new NotFoundException('Requester not found');
@@ -286,12 +336,23 @@ export class UsersService {
 
     if (roleChanged) {
       if (requester.role !== Role.Superuser) {
-        throw new ForbiddenException('Cannot change user role. Use the promote endpoint instead.');
+        throw new ForbiddenException(
+          'Cannot change user role. Use the promote endpoint instead.',
+        );
       }
-      if (updateData.role === Role.Superuser && requester.role !== Role.Superuser) {
-        throw new ForbiddenException('Only superusers can promote users to superuser');
+      if (
+        updateData.role === Role.Superuser &&
+        requester.role !== Role.Superuser
+      ) {
+        throw new ForbiddenException(
+          'Only superusers can promote users to superuser',
+        );
       }
-      if (targetUser.role === Role.Superuser && updateData.role !== Role.Superuser && targetUserId !== userId) {
+      if (
+        targetUser.role === Role.Superuser &&
+        updateData.role !== Role.Superuser &&
+        targetUserId !== userId
+      ) {
         throw new ForbiddenException('Cannot demote another superuser');
       }
       if (targetUserId === userId && updateData.role !== Role.Superuser) {
@@ -315,7 +376,9 @@ export class UsersService {
       await this.auditLogService.log({
         actorId: requester.id,
         actorEmail: requester.email,
-        action: roleChanged ? AuditAction.UserPromoted : AuditAction.UserUpdated,
+        action: roleChanged
+          ? AuditAction.UserPromoted
+          : AuditAction.UserUpdated,
         targetType: 'user',
         targetId: targetUserId,
         metadata: {

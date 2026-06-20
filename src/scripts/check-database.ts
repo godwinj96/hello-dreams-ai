@@ -9,7 +9,7 @@ async function checkDatabase() {
     // Get connection info
     const connection = AppDataSource.manager.connection;
     const options = connection.options as any;
-    
+
     console.log('=== Connection Details ===');
     if (options.url) {
       // Mask password in connection string
@@ -22,7 +22,7 @@ async function checkDatabase() {
       console.log(`Username: ${options.username}`);
     }
     console.log(`Database Type: ${options.type}`);
-    console.log(`Current Schema: ${(options as any).schema || 'public'}\n`);
+    console.log(`Current Schema: ${options.schema || 'public'}\n`);
 
     // Check if migrations table exists
     console.log('=== Checking Migrations Table ===');
@@ -36,7 +36,9 @@ async function checkDatabase() {
     console.log(`Migrations table exists: ${migrationsTableExists[0].exists}`);
 
     if (migrationsTableExists[0].exists) {
-      const migrations = await AppDataSource.query('SELECT * FROM migrations ORDER BY timestamp DESC');
+      const migrations = await AppDataSource.query(
+        'SELECT * FROM migrations ORDER BY timestamp DESC',
+      );
       console.log(`\nMigrations recorded: ${migrations.length}`);
       migrations.forEach((m: any) => {
         console.log(`  - ${m.name} (timestamp: ${m.timestamp})`);
@@ -52,7 +54,7 @@ async function checkDatabase() {
       AND table_type = 'BASE TABLE'
       ORDER BY table_name;
     `);
-    
+
     if (tables.length === 0) {
       console.log('No tables found in public schema!');
     } else {
@@ -84,4 +86,3 @@ async function checkDatabase() {
 }
 
 checkDatabase();
-

@@ -74,14 +74,21 @@ Automatically generates an optimized LinkedIn profile from your resume data. The
     status: 400,
     description: 'Bad request - No resume data found or generation failed',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async generateProfile(@Request() req): Promise<LinkedInProfile> {
     return this.linkedInOptimizationService.generateProfile(req.user.id);
   }
 
   @Get('profile')
   @ApiOperation({ summary: 'Get generated LinkedIn profile' })
-  @ApiResponse({ status: 200, description: 'LinkedIn profile', type: LinkedInProfile })
+  @ApiResponse({
+    status: 200,
+    description: 'LinkedIn profile',
+    type: LinkedInProfile,
+  })
   @ApiResponse({ status: 404, description: 'Profile not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@Request() req): Promise<LinkedInProfile | null> {
@@ -125,7 +132,8 @@ Update a specific section of your LinkedIn profile. Common sections include:
   })
   @ApiParam({
     name: 'section',
-    description: 'Section name to update (e.g., headline, about, experience, education, skills, certifications, projects)',
+    description:
+      'Section name to update (e.g., headline, about, experience, education, skills, certifications, projects)',
     example: 'headline',
   })
   @ApiResponse({
@@ -135,9 +143,13 @@ Update a specific section of your LinkedIn profile. Common sections include:
   })
   @ApiResponse({
     status: 404,
-    description: 'Profile not found - Generate a profile first using POST /linkedin-optimization/generate',
+    description:
+      'Profile not found - Generate a profile first using POST /linkedin-optimization/generate',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async updateSection(
     @Param('section') section: string,
     @Request() req,
@@ -175,7 +187,10 @@ Replace the entire LinkedIn profile with new data. This completely overwrites th
     description: 'Profile replaced successfully',
     type: LinkedInProfile,
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async replaceProfile(
     @Request() req,
     @Body() body: Partial<LinkedInProfile>,
@@ -207,7 +222,10 @@ Partially update your LinkedIn profile. Only the fields you provide will be upda
     description: 'Profile partially updated successfully',
     type: LinkedInProfile,
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async patchProfile(
     @Request() req,
     @Body() body: Partial<LinkedInProfile>,
@@ -219,17 +237,7 @@ Partially update your LinkedIn profile. Only the fields you provide will be upda
   @ApiOperation({ summary: 'Delete LinkedIn profile' })
   @ApiResponse({ status: 204, description: 'Profile deleted' })
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteProfile(
-    @Request() req,
-  ): Promise<void> {
+  async deleteProfile(@Request() req): Promise<void> {
     return this.linkedInOptimizationService.deleteProfile(req.user.id);
   }
 }
-
-
-
-
-
-
-
-

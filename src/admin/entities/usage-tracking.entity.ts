@@ -38,8 +38,9 @@ export class UsageTracking {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   costNgn: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 4, default: 0 })
+  creditsConsumed: number;
+
   @CreateDateColumn()
   createdAt: Date;
 }
-
-

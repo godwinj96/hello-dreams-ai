@@ -3,9 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 
 export interface InitializeTransactionDto {
-  amount: number; // in kobo (NGN) or cents (USD)
+  amount?: number; // in kobo (NGN) or cents (USD); optional when plan is set
   email: string;
   currency?: 'NGN' | 'USD';
+  plan?: string;
   metadata?: Record<string, any>;
   callback_url?: string;
 }
@@ -61,11 +62,15 @@ export class PaystackService {
   private readonly axiosInstance: AxiosInstance;
 
   constructor(private configService: ConfigService) {
-    this.secretKey = this.configService.get<string>('PAYSTACK_SECRET_KEY') || '';
-    this.publicKey = this.configService.get<string>('PAYSTACK_PUBLIC_KEY') || '';
+    this.secretKey =
+      this.configService.get<string>('PAYSTACK_SECRET_KEY') || '';
+    this.publicKey =
+      this.configService.get<string>('PAYSTACK_PUBLIC_KEY') || '';
 
     if (!this.secretKey) {
-      this.logger.warn('PAYSTACK_SECRET_KEY not set. Paystack services will not work.');
+      this.logger.warn(
+        'PAYSTACK_SECRET_KEY not set. Paystack services will not work.',
+      );
     }
 
     this.axiosInstance = axios.create({
@@ -89,15 +94,25 @@ export class PaystackService {
     }
 
     try {
-      const amountInKobo = Math.round(dto.amount * 100); // Convert to kobo/cents
-
-      const response = await this.axiosInstance.post('/transaction/initialize', {
-        amount: amountInKobo,
+      const body: Record<string, unknown> = {
         email: dto.email,
         currency: dto.currency || 'NGN',
         metadata: dto.metadata,
         callback_url: dto.callback_url,
-      });
+      };
+
+      if (dto.plan) {
+        body.plan = dto.plan;
+      } else if (dto.amount != null) {
+        body.amount = Math.round(dto.amount * 100);
+      } else {
+        throw new BadRequestException('Amount or plan is required');
+      }
+
+      const response = await this.axiosInstance.post(
+        '/transaction/initialize',
+        body,
+      );
 
       if (!response.data.status) {
         throw new BadRequestException(
@@ -155,13 +170,17 @@ export class PaystackService {
   /**
    * Verify a transaction
    */
-  async verifyTransaction(reference: string): Promise<VerifyTransactionResponse> {
+  async verifyTransaction(
+    reference: string,
+  ): Promise<VerifyTransactionResponse> {
     if (!this.secretKey) {
       throw new BadRequestException('Paystack is not configured');
     }
 
     try {
-      const response = await this.axiosInstance.get(`/transaction/verify/${reference}`);
+      const response = await this.axiosInstance.get(
+        `/transaction/verify/${reference}`,
+      );
 
       if (!response.data.status) {
         throw new BadRequestException(
@@ -184,10 +203,7 @@ export class PaystackService {
   /**
    * Verify webhook signature
    */
-  verifyWebhookSignature(
-    payload: string,
-    signature: string,
-  ): boolean {
+  verifyWebhookSignature(payload: string, signature: string): boolean {
     const crypto = require('crypto');
     const hash = crypto
       .createHmac('sha512', this.secretKey)
@@ -206,7 +222,9 @@ export class PaystackService {
     }
 
     try {
-      const response = await this.axiosInstance.get(`/subscription/${subscriptionCode}`);
+      const response = await this.axiosInstance.get(
+        `/subscription/${subscriptionCode}`,
+      );
 
       if (!response.data.status) {
         throw new BadRequestException(
@@ -238,13 +256,10 @@ export class PaystackService {
     }
 
     try {
-      const response = await this.axiosInstance.post(
-        `/subscription/disable`,
-        {
-          code: subscriptionCode,
-          token: emailToken,
-        },
-      );
+      const response = await this.axiosInstance.post(`/subscription/disable`, {
+        code: subscriptionCode,
+        token: emailToken,
+      });
 
       if (!response.data.status) {
         throw new BadRequestException(
@@ -264,8 +279,3 @@ export class PaystackService {
     }
   }
 }
-
-
-
-
-

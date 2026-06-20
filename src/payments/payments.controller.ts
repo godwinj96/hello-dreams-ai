@@ -5,6 +5,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   HttpCode,
@@ -12,6 +13,7 @@ import {
   Req,
   Headers,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import {
@@ -98,14 +100,19 @@ Start a one-time payment process using Paystack. This endpoint creates a payment
   @ApiBody({ type: InitializePaymentDto })
   @ApiResponse({
     status: 201,
-    description: 'Payment initialized successfully - Redirect user to authorizationUrl',
+    description:
+      'Payment initialized successfully - Redirect user to authorizationUrl',
     type: InitializePaymentResponseDto,
   })
   @ApiResponse({
     status: 400,
-    description: 'Invalid request - Invalid amount, currency, or missing required fields',
+    description:
+      'Invalid request - Invalid amount, currency, or missing required fields',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   @ApiResponse({ status: 404, description: 'User not found' })
   async initializePayment(
     @Request() req,
@@ -178,18 +185,24 @@ Start a subscription payment process. This creates a recurring payment plan that
   @ApiBody({ type: InitializeSubscriptionDto })
   @ApiResponse({
     status: 201,
-    description: 'Subscription initialized successfully - Redirect user to authorizationUrl',
+    description:
+      'Subscription initialized successfully - Redirect user to authorizationUrl',
     type: InitializeSubscriptionResponseDto,
   })
   @ApiResponse({
     status: 400,
-    description: 'Invalid request - Invalid billing cycle or missing required fields',
+    description:
+      'Invalid request - Invalid billing cycle or missing required fields',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   @ApiResponse({ status: 404, description: 'User not found' })
   @ApiResponse({
     status: 409,
-    description: 'User already has an active subscription - Cancel existing subscription first',
+    description:
+      'User already has an active subscription - Cancel existing subscription first',
   })
   async initializeSubscription(
     @Request() req,
@@ -291,9 +304,46 @@ This endpoint receives webhook events from Paystack to update payment and subscr
     if (!reference) return;
 
     try {
-      const payment = await this.paymentsService.findPaymentByReference(reference);
+      const metadata = payload.data.metadata ?? {};
+      if (metadata.subscriptionId) {
+        await this.paymentsService.activateSubscription(
+          metadata.subscriptionId,
+          {
+            subscription_code: payload.data.subscription?.subscription_code,
+            customer_code: (payload.data.customer as { customer_code?: string })
+              ?.customer_code,
+            current_period_start:
+              payload.data.subscription?.current_period_start,
+            current_period_end: payload.data.subscription?.current_period_end,
+          },
+        );
+        return;
+      }
+
+      const subscriptionCode = payload.data.subscription?.subscription_code;
+      if (subscriptionCode) {
+        const subscription =
+          await this.paymentsService.findSubscriptionByCode(subscriptionCode);
+        if (subscription) {
+          const subscriptionData = payload.data.subscription ?? payload.data;
+          await this.paymentsService.processSubscriptionPayment(
+            subscriptionCode,
+            {
+              ...subscriptionData,
+              status: subscriptionData.status ?? 'active',
+            },
+          );
+          return;
+        }
+      }
+
+      const payment =
+        await this.paymentsService.findPaymentByReference(reference);
       if (payment) {
-        await this.paymentsService.processSuccessfulPayment(payment.id, reference);
+        await this.paymentsService.processSuccessfulPayment(
+          payment.id,
+          reference,
+        );
       }
     } catch (error) {
       console.error('Error handling successful payment webhook', error);
@@ -305,7 +355,8 @@ This endpoint receives webhook events from Paystack to update payment and subscr
     if (!reference) return;
 
     try {
-      const payment = await this.paymentsService.findPaymentByReference(reference);
+      const payment =
+        await this.paymentsService.findPaymentByReference(reference);
       if (payment) {
         await this.paymentsService.processFailedPayment(
           payment.id,
@@ -319,11 +370,33 @@ This endpoint receives webhook events from Paystack to update payment and subscr
 
   private async handleSubscriptionCreated(payload: PaystackWebhookDto) {
     const subscriptionCode = payload.data.subscription?.subscription_code;
-    if (!subscriptionCode) return;
+    const metadata = payload.data.metadata ?? {};
 
-    // Subscription is already created in initializeSubscription
-    // This webhook just confirms it
-    console.log(`Subscription ${subscriptionCode} confirmed`);
+    try {
+      if (metadata.subscriptionId) {
+        await this.paymentsService.activateSubscription(
+          metadata.subscriptionId,
+          {
+            subscription_code: subscriptionCode,
+            customer_code: (payload.data.customer as { customer_code?: string })
+              ?.customer_code,
+            current_period_start: payload.data.subscription?.current_period_start,
+            current_period_end: payload.data.subscription?.current_period_end,
+          },
+        );
+        return;
+      }
+
+      if (!subscriptionCode) return;
+
+      const subscriptionData = payload.data.subscription ?? payload.data;
+      await this.paymentsService.processSubscriptionPayment(
+        subscriptionCode,
+        subscriptionData,
+      );
+    } catch (error) {
+      console.error('Error handling subscription webhook', error);
+    }
   }
 
   private async handleSubscriptionCancelled(payload: PaystackWebhookDto) {
@@ -331,9 +404,8 @@ This endpoint receives webhook events from Paystack to update payment and subscr
     if (!subscriptionCode) return;
 
     try {
-      const subscription = await this.paymentsService.findSubscriptionByCode(
-        subscriptionCode,
-      );
+      const subscription =
+        await this.paymentsService.findSubscriptionByCode(subscriptionCode);
       if (subscription) {
         await this.paymentsService.cancelSubscription(
           subscription.userId,
@@ -346,11 +418,29 @@ This endpoint receives webhook events from Paystack to update payment and subscr
   }
 
   private async handleSubscriptionPaymentFailed(payload: PaystackWebhookDto) {
-    // Handle failed subscription payment
-    console.log('Subscription payment failed', payload.data);
+    const subscriptionCode = payload.data.subscription?.subscription_code;
+    if (!subscriptionCode) return;
+
+    try {
+      await this.paymentsService.markSubscriptionPaymentFailed(subscriptionCode);
+    } catch (error) {
+      console.error('Error handling subscription payment failure', error);
+    }
   }
 
-  @Get('history')
+  @Get('verify')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Verify Paystack checkout reference' })
+  async verifyCheckout(
+    @Request() req,
+    @Query('reference') reference: string,
+  ) {
+    if (!reference) {
+      throw new BadRequestException('reference is required');
+    }
+    return this.paymentsService.verifyCheckout(req.user.id, reference);
+  }
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
@@ -384,7 +474,10 @@ Retrieve all payment transactions for the authenticated user, ordered by creatio
     description: 'Payment history retrieved successfully',
     type: [PaymentResponseDto],
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async getPaymentHistory(@Request() req): Promise<PaymentResponseDto[]> {
     const payments = await this.paymentsService.getPaymentHistory(req.user.id);
     return payments.map((p) => PaymentResponseDto.fromEntity(p));
@@ -425,17 +518,23 @@ null
   })
   @ApiResponse({
     status: 200,
-    description: 'Current subscription retrieved (may be null if no active subscription)',
+    description:
+      'Current subscription retrieved (may be null if no active subscription)',
     type: SubscriptionResponseDto,
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async getSubscription(
     @Request() req,
   ): Promise<SubscriptionResponseDto | null> {
     const subscription = await this.paymentsService.getUserSubscription(
       req.user.id,
     );
-    return subscription ? SubscriptionResponseDto.fromEntity(subscription) : null;
+    return subscription
+      ? SubscriptionResponseDto.fromEntity(subscription)
+      : null;
   }
 
   @Delete('subscription/:id')
@@ -470,9 +569,13 @@ Cancel an active subscription. The subscription will be immediately cancelled an
   })
   @ApiResponse({
     status: 404,
-    description: 'Subscription not found - Invalid subscription ID or subscription belongs to another user',
+    description:
+      'Subscription not found - Invalid subscription ID or subscription belongs to another user',
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid JWT token' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Missing or invalid JWT token',
+  })
   async cancelSubscription(
     @Request() req,
     @Param('id', UUIDValidationPipe) id: string,
@@ -480,4 +583,3 @@ Cancel an active subscription. The subscription will be immediately cancelled an
     await this.paymentsService.cancelSubscription(req.user.id, id);
   }
 }
-

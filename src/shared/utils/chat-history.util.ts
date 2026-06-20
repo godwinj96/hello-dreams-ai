@@ -3,7 +3,9 @@
  * The in-memory conversation entity is stale after addMessage() updates JSONB in DB,
  * so the current user message must be appended explicitly.
  */
-export function buildChatHistoryAfterUserMessage<T extends { role: string; content: string }>(
+export function buildChatHistoryAfterUserMessage<
+  T extends { role: string; content: string },
+>(
   staleMessagesJsonb: T[] | null | undefined,
   userContent: string,
   userRole: string,

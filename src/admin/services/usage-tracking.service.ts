@@ -33,6 +33,7 @@ export class UsageTrackingService {
     costUsd: number,
     costNgn: number,
     metadata?: any,
+    creditsConsumed = 0,
   ): Promise<UsageTracking> {
     const tracking = this.usageTrackingRepository.create({
       userId,
@@ -41,6 +42,7 @@ export class UsageTrackingService {
       tokensUsed,
       costUsd,
       costNgn,
+      creditsConsumed,
       metadata,
     });
     return this.usageTrackingRepository.save(tracking);
@@ -88,7 +90,10 @@ export class UsageTrackingService {
     });
   }
 
-  async getAggregatedStats(startDate?: Date, endDate?: Date): Promise<{
+  async getAggregatedStats(
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<{
     totalActions: number;
     actionsByModule: Record<string, number>;
     actionsByType: Record<string, number>;
@@ -114,8 +119,10 @@ export class UsageTrackingService {
 
     allTracking.forEach((tracking) => {
       uniqueUserIds.add(tracking.userId);
-      actionsByModule[tracking.module] = (actionsByModule[tracking.module] || 0) + 1;
-      actionsByType[tracking.actionType] = (actionsByType[tracking.actionType] || 0) + 1;
+      actionsByModule[tracking.module] =
+        (actionsByModule[tracking.module] || 0) + 1;
+      actionsByType[tracking.actionType] =
+        (actionsByType[tracking.actionType] || 0) + 1;
     });
 
     return {
@@ -167,12 +174,15 @@ export class UsageTrackingService {
     });
 
     // Group by date
-    const dailyMap = new Map<string, {
-      tokensUsed: number;
-      costUsd: number;
-      costNgn: number;
-      actionsCount: number;
-    }>();
+    const dailyMap = new Map<
+      string,
+      {
+        tokensUsed: number;
+        costUsd: number;
+        costNgn: number;
+        actionsCount: number;
+      }
+    >();
 
     allTracking.forEach((tracking) => {
       const date = tracking.createdAt.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -223,5 +233,3 @@ export class UsageTrackingService {
     };
   }
 }
-
-

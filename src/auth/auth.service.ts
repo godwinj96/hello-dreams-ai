@@ -2,10 +2,12 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { UsersService } from '../users/users.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { RegisterDto } from './dto/register.dto';
@@ -13,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { Role } from '../users/enums/role.enum';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
 import { DashboardEventService } from '../admin/services/dashboard-event.service';
+import { EmailService } from '../shared/email/email.service';
 
 @Injectable()
 export class AuthService {
@@ -23,7 +26,22 @@ export class AuthService {
     private configService: ConfigService,
     private usageTrackingService: UsageTrackingService,
     private dashboardEventService: DashboardEventService,
+    private emailService: EmailService,
   ) {}
+
+  private getFrontendUrl(): string {
+    const origin = this.configService.get<string>('CORS_ORIGIN', '');
+    const first = origin.split(',')[0]?.trim();
+    return (
+      this.configService.get<string>('FRONTEND_URL') ||
+      first ||
+      'http://localhost:5173'
+    );
+  }
+
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
 
   private async generateTokens(user: any) {
     const payload = { email: user.email, sub: user.id };
@@ -72,7 +90,104 @@ export class AuthService {
     // Emit event for dashboard
     this.dashboardEventService.emitUserRegistered(user.id, user.email);
 
+    this.sendVerificationEmail(user).catch((err) =>
+      console.error('Failed to send verification email:', err),
+    );
+
     return this.generateTokens(user);
+  }
+
+  private async sendVerificationEmail(user: {
+    id: string;
+    email: string;
+    name: string;
+  }): Promise<void> {
+    const token = crypto.randomBytes(32).toString('hex');
+    const hashed = this.hashToken(token);
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.usersService.updateAuthTokens(user.id, {
+      emailVerificationToken: hashed,
+      emailVerificationExpires: expires,
+    });
+
+    const link = `${this.getFrontendUrl()}/auth/verify-email?token=${token}`;
+    await this.emailService.sendEmail(
+      user.email,
+      'Verify your Hello Dreams AI account',
+      `<p>Hi ${user.name},</p><p><a href="${link}">Verify your email</a></p>`,
+    );
+  }
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(email);
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const hashed = this.hashToken(token);
+      const expires = new Date(Date.now() + 60 * 60 * 1000);
+      await this.usersService.updateAuthTokens(user.id, {
+        passwordResetToken: hashed,
+        passwordResetExpires: expires,
+      });
+      const link = `${this.getFrontendUrl()}/reset-password?token=${token}`;
+      await this.emailService.sendEmail(
+        user.email,
+        'Reset your Hello Dreams AI password',
+        `<p>Hi ${user.name},</p><p><a href="${link}">Reset your password</a></p><p>This link expires in 1 hour.</p>`,
+      );
+    }
+    return {
+      message: 'If an account exists for this email, a reset link has been sent.',
+    };
+  }
+
+  async resetPassword(token: string, password: string): Promise<{ message: string }> {
+    const hashed = this.hashToken(token);
+    const user = await this.usersService.findByPasswordResetToken(hashed);
+    if (
+      !user ||
+      !user.passwordResetExpires ||
+      user.passwordResetExpires < new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await this.usersService.updatePassword(user.id, hashedPassword);
+    await this.usersService.updateAuthTokens(user.id, {
+      passwordResetToken: null,
+      passwordResetExpires: null,
+    });
+
+    return { message: 'Password reset successfully' };
+  }
+
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    const hashed = this.hashToken(token);
+    const user = await this.usersService.findByEmailVerificationToken(hashed);
+    if (
+      !user ||
+      !user.emailVerificationExpires ||
+      user.emailVerificationExpires < new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    await this.usersService.updateAuthTokens(user.id, {
+      emailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationExpires: null,
+    });
+
+    return { message: 'Email verified successfully' };
+  }
+
+  async resendVerification(email: string): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(email);
+    if (user && !user.emailVerified) {
+      await this.sendVerificationEmail(user);
+    }
+    return { message: 'If your account is unverified, a new email has been sent.' };
   }
 
   async login(loginDto: LoginDto) {

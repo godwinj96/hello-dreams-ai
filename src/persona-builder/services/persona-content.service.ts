@@ -187,7 +187,7 @@ export class PersonaContentService {
         speakingStyle: [
           'Ask for input and feedback more',
           'Use collaborative language',
-          'Build on others\' ideas',
+          "Build on others' ideas",
         ],
         dressingForImpact: [
           'Approachable professional style',
@@ -315,33 +315,13 @@ export class PersonaContentService {
         `Develop ${toPersona} communication style`,
         'Practice new ways of expressing ideas',
       ],
-      dressingForImpact: [
-        'Adjust professional style to match target persona',
-      ],
+      dressingForImpact: ['Adjust professional style to match target persona'],
       workplaceBehaviour: [
         `Adopt ${toPersona} behaviors gradually`,
         'Seek feedback and adjust',
       ],
-      meetingMastery: [
-        `Apply ${toPersona} approaches in meetings`,
-      ],
-      digitalPresence: [
-        `Build ${toPersona} professional brand`,
-      ],
+      meetingMastery: [`Apply ${toPersona} approaches in meetings`],
+      digitalPresence: [`Build ${toPersona} professional brand`],
     };
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

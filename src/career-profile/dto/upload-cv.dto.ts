@@ -18,17 +18,3 @@ export class UploadCvResponseDto {
     }>;
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

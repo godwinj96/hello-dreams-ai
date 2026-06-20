@@ -27,7 +27,9 @@ export class AiChatService {
     private promptInjectionGuard?: PromptInjectionGuardService,
   ) {
     this.openAIService = openAIService;
-    this.useOpenAI = !!this.openAIService && !!this.configService.get<string>('OPENAI_API_KEY');
+    this.useOpenAI =
+      !!this.openAIService &&
+      !!this.configService.get<string>('OPENAI_API_KEY');
     this.aiProvider = this.configService.get<string>(
       'AI_PROVIDER',
       'huggingface',
@@ -42,8 +44,7 @@ export class AiChatService {
     );
 
     // const currentDate = new Date().toISOString().split('T')[0];
-// e.g. "2026-01-07"
-
+    // e.g. "2026-01-07"
 
     if (this.aiProvider === 'huggingface') {
       const apiKey = this.configService.get<string>('HUGGINGFACE_API_KEY');
@@ -62,7 +63,10 @@ export class AiChatService {
     return result.content;
   }
 
-  async chatWithUsage(messages: ChatMessage[], temperature?: number): Promise<{
+  async chatWithUsage(
+    messages: ChatMessage[],
+    temperature?: number,
+  ): Promise<{
     content: string;
     usage: {
       promptTokens: number;
@@ -78,13 +82,14 @@ export class AiChatService {
 
       // Prefer OpenAI if available (to use ChatGPT credits)
       if (this.useOpenAI && this.openAIService) {
-        const result = await this.openAIService.chatWithUsage(sanitizedMessages);
+        const result =
+          await this.openAIService.chatWithUsage(sanitizedMessages);
         return {
           ...result,
           provider: 'openai',
         };
       }
-      
+
       if (this.aiProvider === 'huggingface') {
         return await this.chatWithHuggingFace(sanitizedMessages, temperature);
       } else {
@@ -96,7 +101,10 @@ export class AiChatService {
     }
   }
 
-  private async chatWithHuggingFace(messages: ChatMessage[], temperature?: number): Promise<{
+  private async chatWithHuggingFace(
+    messages: ChatMessage[],
+    temperature?: number,
+  ): Promise<{
     content: string;
     usage: {
       promptTokens: number;

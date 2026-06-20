@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsageTracking } from './entities/usage-tracking.entity';
 import { AdminAuditLog } from './entities/admin-audit-log.entity';
@@ -17,6 +17,7 @@ import { AuditLogController } from './controllers/audit-log.controller';
 import { CostsController } from './controllers/costs.controller';
 import { CostsService } from './services/costs.service';
 import { AuditModule } from './audit.module';
+import { CreditsModule } from '../credits/credits.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AuditModule } from './audit.module';
       Subscription,
     ]),
     AuditModule,
+    forwardRef(() => CreditsModule),
   ],
   controllers: [
     DashboardController,

@@ -31,11 +31,14 @@ export class PersonaBuilderService {
   ) {}
 
   async getQuestions(): Promise<QuestionDto[]> {
-    // Return the structured questions from constants
     return PERSONA_QUESTIONS.map((q) => ({
       id: q.id,
       question: q.question,
       category: 'persona',
+      options: q.options.map((opt) => ({
+        id: opt.id,
+        text: opt.text,
+      })),
     }));
   }
 
@@ -51,6 +54,7 @@ export class PersonaBuilderService {
       this.answerRepository.create({
         userId,
         questionId: answer.questionId,
+        optionId: answer.optionId,
         question: answer.question,
         answer: answer.answer,
       } as Partial<PersonaAnswer>),
@@ -63,7 +67,9 @@ export class PersonaBuilderService {
       .trackAction(userId, 'answers_submitted', 'persona-builder', {
         answerCount: savedAnswers.length,
       })
-      .catch((err) => console.error('Failed to track answers submission:', err));
+      .catch((err) =>
+        console.error('Failed to track answers submission:', err),
+      );
 
     return savedAnswers;
   }
@@ -80,23 +86,28 @@ export class PersonaBuilderService {
     const answers = await this.getUserAnswers(userId);
 
     if (answers.length === 0) {
-      throw new NotFoundException('No answers found. Please submit answers first.');
+      throw new NotFoundException(
+        'No answers found. Please submit answers first.',
+      );
     }
 
-    // Build answer map (questionId -> optionId)
-    // We need to match answers to options
     const answerMap = new Map<string, string>();
     answers.forEach((answer) => {
-      const question = PERSONA_QUESTIONS.find((q) => q.id === answer.questionId);
+      if (answer.optionId) {
+        answerMap.set(answer.questionId, answer.optionId);
+        return;
+      }
+
+      const question = PERSONA_QUESTIONS.find(
+        (q) => q.id === answer.questionId,
+      );
       if (question) {
-        // Try to find option by matching answer text
         const option = question.options.find(
           (opt) => opt.text === answer.answer,
         );
         if (option) {
           answerMap.set(answer.questionId, option.id);
         } else {
-          // If exact match fails, use first option as fallback (shouldn't happen)
           this.logger.warn(
             `Could not find option for question ${answer.questionId} with answer "${answer.answer}"`,
           );
@@ -122,7 +133,9 @@ export class PersonaBuilderService {
         scoringResult.currentPersona,
       );
     const idealPersonaDescription =
-      this.personaContentService.getPersonaDescription(scoringResult.idealPersona);
+      this.personaContentService.getPersonaDescription(
+        scoringResult.idealPersona,
+      );
 
     // Generate transformation playbook
     const transformationPlaybook =
@@ -149,43 +162,69 @@ export class PersonaBuilderService {
     );
 
     // Update professional profile
-    await this.professionalProfileService.updatePersonaData(userId, personaData);
+    await this.professionalProfileService.updatePersonaData(
+      userId,
+      personaData,
+    );
     await this.professionalProfileService.updatePersona(userId, persona);
 
     // Mark persona section as complete
-    await this.professionalProfileService.markSectionComplete(userId, 'persona');
+    await this.professionalProfileService.markSectionComplete(
+      userId,
+      'persona',
+    );
 
-    const updatedProfile = await this.professionalProfileService.getProfile(userId);
+    const updatedProfile =
+      await this.professionalProfileService.getProfile(userId);
 
     // Helpful debug: if personaData isn't persisted correctly, we'll know here.
-    if (!updatedProfile.personaData?.currentPersona || !updatedProfile.personaData?.idealPersona) {
-      this.logger.warn('Persona generation completed but personaData is missing fields', {
-        userId,
-        currentPersona: updatedProfile.personaData?.currentPersona ?? null,
-        idealPersona: updatedProfile.personaData?.idealPersona ?? null,
-        appliedPersona: updatedProfile.personaData?.appliedPersona ?? null,
-      });
+    if (
+      !updatedProfile.personaData?.currentPersona ||
+      !updatedProfile.personaData?.idealPersona
+    ) {
+      this.logger.warn(
+        'Persona generation completed but personaData is missing fields',
+        {
+          userId,
+          currentPersona: updatedProfile.personaData?.currentPersona ?? null,
+          idealPersona: updatedProfile.personaData?.idealPersona ?? null,
+          appliedPersona: updatedProfile.personaData?.appliedPersona ?? null,
+        },
+      );
     }
 
     // Map personaData with proper types (entity stores as string, DTO expects enum)
-    const mappedPersonaData = updatedProfile.personaData ? {
-      ...updatedProfile.personaData,
-      currentPersona: updatedProfile.personaData.currentPersona as PersonaArchetype | undefined,
-      idealPersona: updatedProfile.personaData.idealPersona as PersonaArchetype | undefined,
-      transformationPath: updatedProfile.personaData.transformationPath ? {
-        ...updatedProfile.personaData.transformationPath,
-        fromPersona: updatedProfile.personaData.transformationPath.fromPersona as PersonaArchetype | undefined,
-        toPersona: updatedProfile.personaData.transformationPath.toPersona as PersonaArchetype | undefined,
-      } : undefined,
-    } : personaData;
+    const mappedPersonaData = updatedProfile.personaData
+      ? {
+          ...updatedProfile.personaData,
+          currentPersona: updatedProfile.personaData.currentPersona as
+            | PersonaArchetype
+            | undefined,
+          idealPersona: updatedProfile.personaData.idealPersona as
+            | PersonaArchetype
+            | undefined,
+          transformationPath: updatedProfile.personaData.transformationPath
+            ? {
+                ...updatedProfile.personaData.transformationPath,
+                fromPersona: updatedProfile.personaData.transformationPath
+                  .fromPersona as PersonaArchetype | undefined,
+                toPersona: updatedProfile.personaData.transformationPath
+                  .toPersona as PersonaArchetype | undefined,
+              }
+            : undefined,
+        }
+      : personaData;
 
     const costAccumulator = this.aiCostTrackingService.createAccumulator();
     try {
-      const indexResult = await this.contextIndexerService.indexPersona(userId, {
-        persona: updatedProfile.persona,
-        personaData: mappedPersonaData,
-        careerGoals: updatedProfile.careerGoals,
-      });
+      const indexResult = await this.contextIndexerService.indexPersona(
+        userId,
+        {
+          persona: updatedProfile.persona,
+          personaData: mappedPersonaData,
+          careerGoals: updatedProfile.careerGoals,
+        },
+      );
       if (indexResult.embeddingUsage) {
         costAccumulator.addEmbedding({
           provider: 'openai',
@@ -208,7 +247,11 @@ export class PersonaBuilderService {
         idealPersona: scoringResult.idealPersona,
       },
     );
-    this.dashboardEventService.emitFeatureUsed(userId, 'persona-builder', 'persona_generated');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'persona-builder',
+      'persona_generated',
+    );
 
     return {
       id: updatedProfile.id,
@@ -236,7 +279,8 @@ export class PersonaBuilderService {
       appliedPersona: true,
     });
 
-    const updatedProfile = await this.professionalProfileService.getProfile(userId);
+    const updatedProfile =
+      await this.professionalProfileService.getProfile(userId);
 
     if (updatedProfile.personaData?.appliedPersona !== true) {
       this.logger.warn('Persona apply did not persist appliedPersona=true', {
@@ -249,20 +293,30 @@ export class PersonaBuilderService {
 
     const currentPersonaDescription =
       this.personaContentService.getPersonaDescription(
-        updatedProfile.personaData!.currentPersona! as PersonaArchetype,
+        updatedProfile.personaData.currentPersona! as PersonaArchetype,
       );
 
     // Map personaData with proper types
-    const mappedPersonaData = updatedProfile.personaData ? {
-      ...updatedProfile.personaData,
-      currentPersona: updatedProfile.personaData.currentPersona as PersonaArchetype | undefined,
-      idealPersona: updatedProfile.personaData.idealPersona as PersonaArchetype | undefined,
-      transformationPath: updatedProfile.personaData.transformationPath ? {
-        ...updatedProfile.personaData.transformationPath,
-        fromPersona: updatedProfile.personaData.transformationPath.fromPersona as PersonaArchetype | undefined,
-        toPersona: updatedProfile.personaData.transformationPath.toPersona as PersonaArchetype | undefined,
-      } : undefined,
-    } : undefined;
+    const mappedPersonaData = updatedProfile.personaData
+      ? {
+          ...updatedProfile.personaData,
+          currentPersona: updatedProfile.personaData.currentPersona as
+            | PersonaArchetype
+            | undefined,
+          idealPersona: updatedProfile.personaData.idealPersona as
+            | PersonaArchetype
+            | undefined,
+          transformationPath: updatedProfile.personaData.transformationPath
+            ? {
+                ...updatedProfile.personaData.transformationPath,
+                fromPersona: updatedProfile.personaData.transformationPath
+                  .fromPersona as PersonaArchetype | undefined,
+                toPersona: updatedProfile.personaData.transformationPath
+                  .toPersona as PersonaArchetype | undefined,
+              }
+            : undefined,
+        }
+      : undefined;
 
     return {
       id: updatedProfile.id,
@@ -302,16 +356,27 @@ export class PersonaBuilderService {
       );
 
     // Map personaData with proper types
-    const mappedPersonaData = profile.personaData ? {
-      ...profile.personaData,
-      currentPersona: profile.personaData.currentPersona as PersonaArchetype | undefined,
-      idealPersona: profile.personaData.idealPersona as PersonaArchetype | undefined,
-      transformationPath: profile.personaData.transformationPath ? {
-        ...profile.personaData.transformationPath,
-        fromPersona: profile.personaData.transformationPath.fromPersona as PersonaArchetype | undefined,
-        toPersona: profile.personaData.transformationPath.toPersona as PersonaArchetype | undefined,
-      } : undefined,
-    } : undefined;
+    const mappedPersonaData = profile.personaData
+      ? {
+          ...profile.personaData,
+          currentPersona: profile.personaData.currentPersona as
+            | PersonaArchetype
+            | undefined,
+          idealPersona: profile.personaData.idealPersona as
+            | PersonaArchetype
+            | undefined,
+          transformationPath: profile.personaData.transformationPath
+            ? {
+                ...profile.personaData.transformationPath,
+                fromPersona: profile.personaData.transformationPath
+                  .fromPersona as PersonaArchetype | undefined,
+                toPersona: profile.personaData.transformationPath.toPersona as
+                  | PersonaArchetype
+                  | undefined,
+              }
+            : undefined,
+        }
+      : undefined;
 
     return {
       id: profile.id,

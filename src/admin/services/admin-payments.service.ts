@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
-import {
-  Payment,
-  PaymentStatus,
-} from '../../payments/entities/payment.entity';
+import { Payment, PaymentStatus } from '../../payments/entities/payment.entity';
 import {
   Subscription,
   SubscriptionStatus,
@@ -38,6 +36,7 @@ export class AdminPaymentsService {
     private subscriptionRepository: Repository<Subscription>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private readonly configService: ConfigService,
   ) {}
 
   private getDateRange(timeRange?: TimeRangeDto): {
@@ -119,14 +118,14 @@ export class AdminPaymentsService {
     const revenueByDay = new Map<string, number>();
     successful.forEach((p) => {
       const date = p.createdAt.toISOString().split('T')[0];
-      revenueByDay.set(
-        date,
-        (revenueByDay.get(date) || 0) + Number(p.amount),
-      );
+      revenueByDay.set(date, (revenueByDay.get(date) || 0) + Number(p.amount));
     });
 
     const revenueTrend = Array.from(revenueByDay.entries())
-      .map(([date, amount]) => ({ date, amount: Math.round(amount * 100) / 100 }))
+      .map(([date, amount]) => ({
+        date,
+        amount: Math.round(amount * 100) / 100,
+      }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     return {
@@ -143,10 +142,11 @@ export class AdminPaymentsService {
   }
 
   private estimateMonthlyAmount(sub: Subscription): number {
-    // Placeholder MRR estimate — plan amounts would come from config/plan table
-    const baseMonthly = 5000;
+    const baseMonthly =
+      Number(this.configService.get<string>('PAYSTACK_PRO_MONTHLY_AMOUNT')) ||
+      5000;
     if (sub.billingCycle === BillingCycle.Annual) {
-      return baseMonthly;
+      return Math.round(baseMonthly / 12);
     }
     return baseMonthly;
   }

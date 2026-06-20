@@ -7,11 +7,17 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { JobApplication, JobApplicationStatus } from './entities/job-application.entity';
+import {
+  JobApplication,
+  JobApplicationStatus,
+} from './entities/job-application.entity';
 import { JobListing } from './entities/job-listing.entity';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
-import { ApplicationResponseDto, ApplicationsFilterDto } from './dto/application-response.dto';
+import {
+  ApplicationResponseDto,
+  ApplicationsFilterDto,
+} from './dto/application-response.dto';
 import { JobListingResponseDto } from './dto/job-listing-response.dto';
 import { JobSearchService } from './services/job-search.service';
 import { JobApplyService } from './services/job-apply.service';
@@ -39,12 +45,15 @@ export class JobApplicationService {
 
   // ── Search ────────────────────────────────────────────────────────────────
 
-  async search(filters: any) {
-    return this.jobSearchService.search(filters);
+  async search(filters: any, userId?: string) {
+    return this.jobSearchService.search(filters, userId);
   }
 
-  async findListingById(id: string): Promise<JobListingResponseDto> {
-    const dto = await this.jobSearchService.findById(id);
+  async findListingById(
+    id: string,
+    userId?: string,
+  ): Promise<JobListingResponseDto> {
+    const dto = await this.jobSearchService.findById(id, userId);
     if (!dto) throw new NotFoundException(`Job listing ${id} not found`);
     return dto;
   }
@@ -58,13 +67,20 @@ export class JobApplicationService {
     let listing: JobListing;
 
     if (dto.jobListingId) {
-      const found = await this.listingRepository.findOne({ where: { id: dto.jobListingId } });
-      if (!found) throw new NotFoundException(`Job listing ${dto.jobListingId} not found`);
+      const found = await this.listingRepository.findOne({
+        where: { id: dto.jobListingId },
+      });
+      if (!found)
+        throw new NotFoundException(
+          `Job listing ${dto.jobListingId} not found`,
+        );
       listing = found;
     } else if (dto.jobData) {
       // Upsert listing from inline data
       const existing = dto.jobData.sourceUrl
-        ? await this.listingRepository.findOne({ where: { sourceUrl: dto.jobData.sourceUrl } })
+        ? await this.listingRepository.findOne({
+            where: { sourceUrl: dto.jobData.sourceUrl },
+          })
         : null;
 
       if (existing) {
@@ -85,7 +101,9 @@ export class JobApplicationService {
     const existing = await this.applicationRepository.findOne({
       where: { userId, jobListingId: listing.id },
     });
-    if (existing) return this.toDto(existing, listing);
+    if (existing) {
+      return this.toDtoForUser(existing, listing, userId);
+    }
 
     const application = await this.applicationRepository.save(
       this.applicationRepository.create({
@@ -96,9 +114,13 @@ export class JobApplicationService {
       }),
     );
 
-    this.dashboardEventService.emitFeatureUsed(userId, 'job-application', 'job_saved');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'job-application',
+      'job_saved',
+    );
 
-    return this.toDto(application, listing);
+    return this.toDtoForUser(application, listing, userId);
   }
 
   async listApplications(
@@ -112,16 +134,32 @@ export class JobApplicationService {
     const where: any = { userId };
     if (filters.status) where.status = filters.status;
 
-    const [applications, total] = await this.applicationRepository.findAndCount({
-      where,
-      relations: ['jobListing'],
-      order: { updatedAt: 'DESC' },
-      skip,
-      take: limit,
-    });
+    const [applications, total] = await this.applicationRepository.findAndCount(
+      {
+        where,
+        relations: ['jobListing'],
+        order: { updatedAt: 'DESC' },
+        skip,
+        take: limit,
+      },
+    );
+
+    const matchContext =
+      await this.jobSearchService.getUserMatchContext(userId);
 
     return {
-      data: applications.map((a) => this.toDto(a, a.jobListing)),
+      data: applications.map((a) =>
+        this.toDto(
+          a,
+          a.jobListing,
+          a.jobListing
+            ? this.jobSearchService.computeMatchScoreForListing(
+                a.jobListing,
+                matchContext,
+              )
+            : null,
+        ),
+      ),
       meta: {
         page,
         limit,
@@ -133,13 +171,16 @@ export class JobApplicationService {
     };
   }
 
-  async findApplication(id: string, userId: string): Promise<ApplicationResponseDto> {
+  async findApplication(
+    id: string,
+    userId: string,
+  ): Promise<ApplicationResponseDto> {
     const application = await this.applicationRepository.findOne({
       where: { id },
       relations: ['jobListing'],
     });
     this.assertOwnership(application, id, userId);
-    return this.toDto(application, application.jobListing);
+    return this.toDtoForUser(application, application.jobListing, userId);
   }
 
   async updateApplication(
@@ -157,11 +198,13 @@ export class JobApplicationService {
     if (dto.notes !== undefined) application.notes = dto.notes;
 
     const saved = await this.applicationRepository.save(application);
-    return this.toDto(saved, application.jobListing);
+    return this.toDtoForUser(saved, application.jobListing, userId);
   }
 
   async deleteApplication(id: string, userId: string): Promise<void> {
-    const application = await this.applicationRepository.findOne({ where: { id } });
+    const application = await this.applicationRepository.findOne({
+      where: { id },
+    });
     this.assertOwnership(application, id, userId);
     await this.applicationRepository.remove(application);
   }
@@ -172,7 +215,10 @@ export class JobApplicationService {
     id: string,
     userId: string,
     user: User,
-  ): Promise<{ resume: Record<string, any>; coverLetter: Record<string, any> }> {
+  ): Promise<{
+    resume: Record<string, any>;
+    coverLetter: Record<string, any>;
+  }> {
     const application = await this.applicationRepository.findOne({
       where: { id },
       relations: ['jobListing'],
@@ -195,7 +241,11 @@ export class JobApplicationService {
       { applicationId: id },
     );
 
-    this.dashboardEventService.emitFeatureUsed(userId, 'job-application', 'documents_generated');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'job-application',
+      'documents_generated',
+    );
 
     return result;
   }
@@ -203,31 +253,45 @@ export class JobApplicationService {
   async getDocuments(
     id: string,
     userId: string,
-  ): Promise<{ resume: Record<string, any> | null; coverLetter: Record<string, any> | null; hasDocuments: boolean }> {
-    const application = await this.applicationRepository.findOne({ where: { id } });
+  ): Promise<{
+    resume: Record<string, any> | null;
+    coverLetter: Record<string, any> | null;
+    hasDocuments: boolean;
+  }> {
+    const application = await this.applicationRepository.findOne({
+      where: { id },
+    });
     this.assertOwnership(application, id, userId);
 
     return {
       resume: application.generatedResumeContent ?? null,
       coverLetter: application.generatedCoverLetterContent ?? null,
-      hasDocuments: !!(application.generatedResumeContent && application.generatedCoverLetterContent),
+      hasDocuments: !!(
+        application.generatedResumeContent &&
+        application.generatedCoverLetterContent
+      ),
     };
   }
 
   // ── Apply ─────────────────────────────────────────────────────────────────
 
-  async applyToJob(id: string, userId: string, user: User): Promise<ApplyJobResponseDto> {
+  async applyToJob(
+    id: string,
+    userId: string,
+    user: User,
+  ): Promise<ApplyJobResponseDto> {
     const application = await this.applicationRepository.findOne({
       where: { id },
       relations: ['jobListing'],
     });
     this.assertOwnership(application, id, userId);
 
-    const { result, atsApplicationId, atsSubmittedAt } = await this.jobApplyService.apply({
-      application,
-      listing: application.jobListing,
-      user,
-    });
+    const { result, atsApplicationId, atsSubmittedAt } =
+      await this.jobApplyService.apply({
+        application,
+        listing: application.jobListing,
+        user,
+      });
 
     application.status = JobApplicationStatus.Applied;
     application.appliedAt = new Date();
@@ -235,19 +299,48 @@ export class JobApplicationService {
     if (atsSubmittedAt) application.atsSubmittedAt = atsSubmittedAt;
     await this.applicationRepository.save(application);
 
-    this.dashboardEventService.emitFeatureUsed(userId, 'job-application', 'applied');
+    this.dashboardEventService.emitFeatureUsed(
+      userId,
+      'job-application',
+      'applied',
+    );
 
     return result;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  private assertOwnership(application: JobApplication | null, id: string, userId: string): asserts application is JobApplication {
-    if (!application) throw new NotFoundException(`Application ${id} not found`);
-    if (application.userId !== userId) throw new ForbiddenException('Access denied');
+  private assertOwnership(
+    application: JobApplication | null,
+    id: string,
+    userId: string,
+  ): asserts application is JobApplication {
+    if (!application)
+      throw new NotFoundException(`Application ${id} not found`);
+    if (application.userId !== userId)
+      throw new ForbiddenException('Access denied');
   }
 
-  private toDto(application: JobApplication, listing: JobListing): ApplicationResponseDto {
+  private async toDtoForUser(
+    application: JobApplication,
+    listing: JobListing,
+    userId: string,
+  ): Promise<ApplicationResponseDto> {
+    const matchContext = listing
+      ? await this.jobSearchService.getUserMatchContext(userId)
+      : null;
+    const matchScore = listing
+      ? this.jobSearchService.computeMatchScoreForListing(listing, matchContext)
+      : null;
+
+    return this.toDto(application, listing, matchScore);
+  }
+
+  private toDto(
+    application: JobApplication,
+    listing: JobListing,
+    matchScore: number | null = null,
+  ): ApplicationResponseDto {
     return {
       id: application.id,
       userId: application.userId,
@@ -268,7 +361,7 @@ export class JobApplicationService {
             sourceUrl: listing.sourceUrl ?? null,
             applicationUrl: listing.applicationUrl ?? null,
             postedDate: listing.postedDate ?? null,
-            matchScore: listing.matchScore ?? null,
+            matchScore,
             isRemote: listing.isRemote,
             country: listing.country ?? null,
             atsType: listing.atsType ?? null,
@@ -282,9 +375,13 @@ export class JobApplicationService {
       notes: application.notes ?? null,
       atsApplicationId: application.atsApplicationId ?? null,
       atsSubmittedAt: application.atsSubmittedAt ?? null,
-      hasGeneratedDocuments: !!(application.generatedResumeContent && application.generatedCoverLetterContent),
+      hasGeneratedDocuments: !!(
+        application.generatedResumeContent &&
+        application.generatedCoverLetterContent
+      ),
       generatedResumeContent: application.generatedResumeContent ?? null,
-      generatedCoverLetterContent: application.generatedCoverLetterContent ?? null,
+      generatedCoverLetterContent:
+        application.generatedCoverLetterContent ?? null,
       createdAt: application.createdAt,
       updatedAt: application.updatedAt,
     };

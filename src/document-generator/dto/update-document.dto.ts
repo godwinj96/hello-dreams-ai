@@ -17,7 +17,11 @@ export class UpdateDocumentDto {
 }
 
 export class PatchDocumentDto {
-  @ApiProperty({ enum: DocumentType, description: 'Document type', required: false })
+  @ApiProperty({
+    enum: DocumentType,
+    description: 'Document type',
+    required: false,
+  })
   @IsOptional()
   @IsEnum(DocumentType)
   documentType?: DocumentType;
@@ -31,4 +35,3 @@ export class PatchDocumentDto {
   @IsObject()
   content?: Record<string, any>;
 }
-

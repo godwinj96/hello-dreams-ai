@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Payment, PaymentStatus, PaymentType } from '../entities/payment.entity';
-import { Subscription, SubscriptionStatus, BillingCycle } from '../entities/subscription.entity';
+import {
+  Payment,
+  PaymentStatus,
+  PaymentType,
+} from '../entities/payment.entity';
+import {
+  Subscription,
+  SubscriptionStatus,
+  BillingCycle,
+} from '../entities/subscription.entity';
 
 export class PaymentResponseDto {
   @ApiProperty()
@@ -115,8 +123,3 @@ export class InitializeSubscriptionResponseDto {
   @ApiProperty()
   subscription: SubscriptionResponseDto;
 }
-
-
-
-
-
