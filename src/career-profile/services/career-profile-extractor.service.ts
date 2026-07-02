@@ -16,8 +16,9 @@ export class CareerProfileExtractorService {
     messages: ChatMessage[],
   ): Promise<void> {
     try {
-      // Get the full conversation text
+      // Get the full conversation text (exclude system messages to prevent prompt leakage)
       const conversationText = messages
+        .filter((msg) => msg.role !== 'system')
         .map((msg) => `${msg.role}: ${msg.content}`)
         .join('\n');
 
