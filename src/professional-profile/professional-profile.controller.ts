@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Patch, Body, UseGuards, Request } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -26,5 +26,20 @@ export class ProfessionalProfileController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getMyProfile(@Request() req): Promise<ProfessionalProfile> {
     return this.profileService.getProfile(req.user.id);
+  }
+
+  @Patch('me')
+  @ApiOperation({
+    summary: "Partially update the current user's professional profile",
+    description:
+      'Accepts any subset of profile fields (basicInfo, careerGoals, extractedData, targetJob, cvMetadata, personaData, etc.) and merges them into the existing profile.',
+  })
+  @ApiResponse({ status: 200, description: 'Profile updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async updateMyProfile(
+    @Request() req,
+    @Body() dto: Record<string, any>,
+  ): Promise<ProfessionalProfile> {
+    return this.profileService.updateProfile(req.user.id, dto);
   }
 }
