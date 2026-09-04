@@ -5,7 +5,7 @@ export type AiOperation =
   | 'speech_to_text'
   | 'extraction';
 
-export type AiProvider = 'openai' | 'huggingface' | 'ollama';
+export type AiProvider = 'openai' | 'gemini' | 'huggingface' | 'ollama';
 
 export interface AiUsageBreakdownItem {
   operation: AiOperation;

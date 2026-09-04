@@ -9,6 +9,7 @@ import { ProfessionalProfileModule } from '../professional-profile/professional-
 import { SupabaseStorageService } from './services/supabase-storage.service';
 import { VoiceService } from './services/voice.service';
 import { OpenAIService } from './services/openai.service';
+import { GeminiService } from './services/gemini.service';
 import { PromptInjectionGuardService } from './services/prompt-injection-guard.service';
 import { EmbeddingService } from './services/embedding.service';
 import { EmbeddingRetryService } from './services/embedding-retry.service';
@@ -30,6 +31,7 @@ import { ContextIndexerService } from './services/context-indexer.service';
     SupabaseStorageService,
     VoiceService,
     OpenAIService,
+    GeminiService,
     PromptInjectionGuardService,
     EmbeddingService,
     EmbeddingRetryService,
@@ -39,6 +41,7 @@ import { ContextIndexerService } from './services/context-indexer.service';
     SupabaseStorageService,
     VoiceService,
     OpenAIService,
+    GeminiService,
     PromptInjectionGuardService,
     EmbeddingService,
     ContextIndexerService,

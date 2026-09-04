@@ -4,11 +4,28 @@ import { HfInference } from '@huggingface/inference';
 import axios from 'axios';
 import { MessageRole } from '../enums/message-role.enum';
 import { OpenAIService } from '../../shared/services/openai.service';
+import { GeminiService } from '../../shared/services/gemini.service';
 import { PromptInjectionGuardService } from '../../shared/services/prompt-injection-guard.service';
+import {
+  AiUnavailableException,
+  isQuotaError,
+} from '../../shared/errors/ai-unavailable.exception';
+import { AiProvider } from '../../shared/types/ai-usage.types';
 
 export interface ChatMessage {
   role: MessageRole;
   content: string;
+}
+
+export interface AiChatResult {
+  content: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  model: string;
+  provider: AiProvider;
 }
 
 @Injectable()
@@ -20,13 +37,16 @@ export class AiChatService {
   private readonly ollamaModel: string;
   private readonly useOpenAI: boolean;
   private readonly openAIService?: OpenAIService;
+  private readonly geminiService?: GeminiService;
 
   constructor(
     private configService: ConfigService,
     openAIService?: OpenAIService,
     private promptInjectionGuard?: PromptInjectionGuardService,
+    geminiService?: GeminiService,
   ) {
     this.openAIService = openAIService;
+    this.geminiService = geminiService;
     this.useOpenAI =
       !!this.openAIService &&
       !!this.configService.get<string>('OPENAI_API_KEY');
@@ -46,15 +66,15 @@ export class AiChatService {
     // const currentDate = new Date().toISOString().split('T')[0];
     // e.g. "2026-01-07"
 
-    if (this.aiProvider === 'huggingface') {
-      const apiKey = this.configService.get<string>('HUGGINGFACE_API_KEY');
-      if (apiKey) {
-        this.hfClient = new HfInference(apiKey);
-      } else {
-        this.logger.warn(
-          'HUGGINGFACE_API_KEY not set, HuggingFace integration will not work',
-        );
-      }
+    // Built whenever a key is present (not just when HuggingFace is the
+    // selected provider) so it can act as a fallback for OpenAI/Gemini.
+    const hfApiKey = this.configService.get<string>('HUGGINGFACE_API_KEY');
+    if (hfApiKey) {
+      this.hfClient = new HfInference(hfApiKey);
+    } else if (this.aiProvider === 'huggingface') {
+      this.logger.warn(
+        'HUGGINGFACE_API_KEY not set, HuggingFace integration will not work',
+      );
     }
   }
 
@@ -74,31 +94,160 @@ export class AiChatService {
       totalTokens: number;
     };
     model: string;
-    provider: 'openai' | 'huggingface' | 'ollama';
+    provider: AiProvider;
   }> {
-    try {
-      // Sanitize user messages to prevent prompt injection
-      const sanitizedMessages = this.sanitizeMessages(messages);
+    // Sanitize user messages to prevent prompt injection
+    const sanitizedMessages = this.sanitizeMessages(messages);
 
-      // Prefer OpenAI if available (to use ChatGPT credits)
-      if (this.useOpenAI && this.openAIService) {
-        const result =
-          await this.openAIService.chatWithUsage(sanitizedMessages);
-        return {
-          ...result,
-          provider: 'openai',
-        };
-      }
+    // Providers are tried in order and the first success wins. Previously a
+    // failure from the preferred provider aborted the whole call, so an OpenAI
+    // outage took every AI feature down even with other keys configured.
+    const chain = this.buildProviderChain(sanitizedMessages, temperature);
 
-      if (this.aiProvider === 'huggingface') {
-        return await this.chatWithHuggingFace(sanitizedMessages, temperature);
-      } else {
-        return await this.chatWithOllama(sanitizedMessages);
-      }
-    } catch (error) {
-      this.logger.error('Error in AI chat service', error);
-      throw new Error('Failed to get AI response. Please try again.');
+    if (chain.length === 0) {
+      this.logger.error('No AI provider is configured');
+      throw new AiUnavailableException({
+        reason: 'not_configured',
+        providersTried: [],
+      });
     }
+
+    const attempted: string[] = [];
+    let sawQuotaError = false;
+
+    for (const provider of chain) {
+      attempted.push(provider.name);
+      try {
+        return await provider.run();
+      } catch (error) {
+        if (isQuotaError(error)) {
+          sawQuotaError = true;
+          this.logger.error(
+            `AI provider "${provider.name}" is out of quota — falling through`,
+          );
+        } else {
+          this.logger.error(
+            `AI provider "${provider.name}" failed — falling through`,
+            error instanceof Error ? error.stack : String(error),
+          );
+        }
+      }
+    }
+
+    this.logger.error(
+      `All AI providers failed (tried: ${attempted.join(', ')})`,
+    );
+
+    throw new AiUnavailableException({
+      reason: sawQuotaError ? 'quota_exhausted' : 'provider_error',
+      providersTried: attempted,
+    });
+  }
+
+  /**
+   * Ordered list of providers to attempt, skipping any that are unconfigured.
+   *
+   * OpenAI stays first so existing behaviour and cost profile are unchanged on
+   * the happy path; the rest exist purely so a single provider outage degrades
+   * instead of failing the request.
+   */
+  private buildProviderChain(
+    messages: ChatMessage[],
+    temperature?: number,
+  ): Array<{ name: AiProvider; run: () => Promise<AiChatResult> }> {
+    const chain: Array<{ name: AiProvider; run: () => Promise<AiChatResult> }> =
+      [];
+
+    if (this.useOpenAI && this.openAIService) {
+      chain.push({
+        name: 'openai',
+        run: async () => ({
+          ...(await this.openAIService!.chatWithUsage(messages)),
+          provider: 'openai' as const,
+        }),
+      });
+    }
+
+    if (this.geminiService?.isConfigured()) {
+      chain.push({
+        name: 'gemini',
+        run: async () => ({
+          ...(await this.geminiService!.chatWithUsage(
+            messages,
+            temperature ?? 0.7,
+          )),
+          provider: 'gemini' as const,
+        }),
+      });
+    }
+
+    if (this.hfClient) {
+      chain.push({
+        name: 'huggingface',
+        run: () => this.chatWithHuggingFace(messages, temperature),
+      });
+    }
+
+    // Ollama is local, so it is only worth attempting when explicitly selected.
+    if (this.aiProvider === 'ollama') {
+      chain.push({
+        name: 'ollama',
+        run: () => this.chatWithOllama(messages),
+      });
+    }
+
+    return chain;
+  }
+
+  /**
+   * Keeps the HuggingFace request under its payload ceiling.
+   *
+   * The serverless inference endpoint rejects large bodies outright with
+   * "request entity too large", which took out the whole fallback chain for any
+   * long conversation. The system prompt is always kept (it carries the task
+   * instructions); older turns are dropped first, newest context retained.
+   */
+  private trimForHuggingFace<T extends { role: string; content: string }>(
+    formatted: T[],
+  ): T[] {
+    const MAX_CHARS = 6000;
+
+    const size = (list: T[]) =>
+      list.reduce((total, m) => total + m.content.length, 0);
+
+    if (size(formatted) <= MAX_CHARS) return formatted;
+
+    const system = formatted.filter((m) => m.role === 'system');
+    const rest = formatted.filter((m) => m.role !== 'system');
+
+    let budget = MAX_CHARS - size(system);
+
+    // If the system prompt alone blows the budget, truncate it rather than
+    // sending nothing at all.
+    if (budget <= 0) {
+      const truncated = system.map((m) => ({
+        ...m,
+        content: m.content.slice(0, MAX_CHARS),
+      }));
+      this.logger.warn(
+        'HuggingFace payload truncated: system prompt exceeded the limit',
+      );
+      return truncated;
+    }
+
+    const kept: T[] = [];
+    for (let i = rest.length - 1; i >= 0; i -= 1) {
+      const message = rest[i];
+      if (message.content.length > budget) break;
+      kept.unshift(message);
+      budget -= message.content.length;
+    }
+
+    this.logger.warn(
+      `HuggingFace payload trimmed from ${rest.length} to ${kept.length} messages`,
+    );
+
+    return [...system, ...kept];
   }
 
   private async chatWithHuggingFace(
@@ -121,7 +270,9 @@ export class AiChatService {
     }
 
     // Format messages for HuggingFace API
-    const formattedMessages = this.formatMessagesForHuggingFace(messages);
+    const formattedMessages = this.trimForHuggingFace(
+      this.formatMessagesForHuggingFace(messages),
+    );
 
     try {
       const response = await this.hfClient.chatCompletion({

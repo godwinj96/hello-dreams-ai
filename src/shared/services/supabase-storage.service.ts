@@ -232,6 +232,50 @@ export class SupabaseStorageService {
     );
   }
 
+  /**
+   * Uploads to a public bucket and returns a permanent public URL.
+   *
+   * uploadBuffer targets the private headshot bucket and returns a signed URL
+   * that expires after a week — fine for a one-off download, wrong for
+   * something like an avatar that must keep resolving indefinitely.
+   */
+  async uploadPublic(
+    buffer: Buffer,
+    fileName: string,
+    mimeType: string,
+    folder: string,
+    userId: string,
+    bucket: string,
+  ): Promise<string> {
+    if (!this.supabase) {
+      throw new BadRequestException('Supabase storage not configured');
+    }
+
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = `${folder}/${userId}/${Date.now()}-${safeName}`;
+
+    const { error } = await this.supabase.storage
+      .from(bucket)
+      .upload(filePath, buffer, {
+        contentType: mimeType,
+        upsert: true,
+        cacheControl: '3600',
+      });
+
+    if (error) {
+      this.logger.error(`Error uploading to public bucket ${bucket}`, error);
+      throw new BadRequestException(`Failed to upload file: ${error.message}`);
+    }
+
+    const { data } = this.supabase.storage.from(bucket).getPublicUrl(filePath);
+
+    if (!data?.publicUrl) {
+      throw new BadRequestException('Failed to resolve public URL');
+    }
+
+    return data.publicUrl;
+  }
+
   async getSignedUrl(
     filePath: string,
     expiresIn: number = 3600,

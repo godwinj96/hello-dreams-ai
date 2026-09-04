@@ -137,11 +137,15 @@ export class AuthService {
       );
     }
     return {
-      message: 'If an account exists for this email, a reset link has been sent.',
+      message:
+        'If an account exists for this email, a reset link has been sent.',
     };
   }
 
-  async resetPassword(token: string, password: string): Promise<{ message: string }> {
+  async resetPassword(
+    token: string,
+    password: string,
+  ): Promise<{ message: string }> {
     const hashed = this.hashToken(token);
     const user = await this.usersService.findByPasswordResetToken(hashed);
     if (
@@ -187,7 +191,9 @@ export class AuthService {
     if (user && !user.emailVerified) {
       await this.sendVerificationEmail(user);
     }
-    return { message: 'If your account is unverified, a new email has been sent.' };
+    return {
+      message: 'If your account is unverified, a new email has been sent.',
+    };
   }
 
   async login(loginDto: LoginDto) {

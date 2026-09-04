@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProfessionalProfile } from './entities/professional-profile.entity';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class ProfessionalProfileService {
@@ -10,6 +11,8 @@ export class ProfessionalProfileService {
   constructor(
     @InjectRepository(ProfessionalProfile)
     private profileRepository: Repository<ProfessionalProfile>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
   ) {}
 
   async getProfile(userId: string): Promise<ProfessionalProfile> {
@@ -18,18 +21,52 @@ export class ProfessionalProfileService {
     });
 
     if (!profile) {
-      // Create profile if it doesn't exist
+      // Create profile if it doesn't exist, seeded from the signup account so
+      // contact details are correct before any AI extraction runs.
       profile = this.profileRepository.create({
         userId,
         careerGoals: {},
         persona: {},
         extractedData: {},
         completedSections: {},
+        basicInfo: await this.buildSeedBasicInfo(userId),
       });
+      profile = await this.profileRepository.save(profile);
+      return profile;
+    }
+
+    // Backfill for profiles created before the account seed existed. Without
+    // this, generated documents show whatever the model guessed from the chat.
+    if (!profile.basicInfo?.email || !profile.basicInfo?.name) {
+      const seed = await this.buildSeedBasicInfo(userId);
+      const merged = {
+        ...seed,
+        ...Object.fromEntries(
+          Object.entries(profile.basicInfo ?? {}).filter(
+            ([, value]) =>
+              value !== undefined && value !== null && value !== '',
+          ),
+        ),
+      };
+      // The account address wins: it is verified, the extracted one is guessed.
+      if (seed.email) merged.email = seed.email;
+      profile.basicInfo = merged;
       profile = await this.profileRepository.save(profile);
     }
 
     return profile;
+  }
+
+  /** Contact details taken from the user's account record. */
+  private async buildSeedBasicInfo(
+    userId: string,
+  ): Promise<ProfessionalProfile['basicInfo']> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) return {};
+    return {
+      ...(user.name ? { name: user.name } : {}),
+      ...(user.email ? { email: user.email } : {}),
+    };
   }
 
   async updateProfile(
@@ -178,6 +215,26 @@ export class ProfessionalProfileService {
     return await this.profileRepository.save(profile);
   }
 
+  /**
+   * Internal keys that must never reach a prompt or an API response.
+   *
+   * `_preCleanupBackup` holds the pre-sanitisation copy of a profile field.
+   * Leaving it in would feed the very leaked-prompt text we cleaned straight
+   * back into every generation.
+   */
+  private static readonly INTERNAL_KEYS = ['_preCleanupBackup'];
+
+  private stripInternal<T extends Record<string, any> | null | undefined>(
+    value: T,
+  ): Record<string, any> {
+    if (!value || typeof value !== 'object') return {};
+    const copy: Record<string, any> = { ...value };
+    for (const key of ProfessionalProfileService.INTERNAL_KEYS) {
+      delete copy[key];
+    }
+    return copy;
+  }
+
   async getProfileForGeneration(userId: string): Promise<{
     careerGoals: any;
     persona: any;
@@ -189,13 +246,37 @@ export class ProfessionalProfileService {
     const profile = await this.getProfile(userId);
 
     return {
-      careerGoals: profile.careerGoals || {},
-      persona: profile.persona || {},
-      extractedData: profile.extractedData || {},
-      basicInfo: profile.basicInfo || {},
-      targetJob: profile.targetJob || {},
-      personaData: profile.personaData || {},
+      careerGoals: this.stripInternal(profile.careerGoals),
+      persona: this.stripInternal(profile.persona),
+      extractedData: this.stripInternal(profile.extractedData),
+      basicInfo: this.stripInternal(profile.basicInfo),
+      targetJob: this.stripInternal(profile.targetJob),
+      personaData: this.stripInternal(profile.personaData),
     };
+  }
+
+  /** Same profile with internal keys removed, for API responses. */
+  async getPublicProfile(userId: string): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    return {
+      ...profile,
+      careerGoals: this.stripInternal(profile.careerGoals),
+      extractedData: this.stripInternal(profile.extractedData),
+    } as unknown as ProfessionalProfile;
+  }
+
+  /** Stores the AI-written career narrative on the profile. */
+  async saveCareerSummary(
+    userId: string,
+    careerSummary: string,
+  ): Promise<ProfessionalProfile> {
+    const profile = await this.getProfile(userId);
+    profile.extractedData = {
+      ...(profile.extractedData ?? {}),
+      careerSummary,
+      careerSummaryGeneratedAt: new Date().toISOString(),
+    };
+    return await this.profileRepository.save(profile);
   }
 
   async markSectionComplete(

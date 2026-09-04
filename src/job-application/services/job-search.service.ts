@@ -89,11 +89,9 @@ export class JobSearchService {
     });
 
     // Upsert into DB for caching and later reference
-    let listings = await this.upsertListings(unique);
+    const listings = await this.upsertListings(unique);
 
-    const matchContext = userId
-      ? await this.getUserMatchContext(userId)
-      : null;
+    const matchContext = userId ? await this.getUserMatchContext(userId) : null;
 
     const scoredListings = listings.map((listing) => ({
       listing,
@@ -101,9 +99,7 @@ export class JobSearchService {
     }));
 
     if (userId) {
-      scoredListings.sort(
-        (a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0),
-      );
+      scoredListings.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
     }
 
     // Apply in-memory filters not handled by all adapters
@@ -150,17 +146,13 @@ export class JobSearchService {
     const listing = await this.listingRepository.findOne({ where: { id } });
     if (!listing) return null;
 
-    const matchContext = userId
-      ? await this.getUserMatchContext(userId)
-      : null;
+    const matchContext = userId ? await this.getUserMatchContext(userId) : null;
     const matchScore = this.computeMatchScoreForListing(listing, matchContext);
 
     return this.toDto(listing, matchScore);
   }
 
-  async getUserMatchContext(
-    userId: string,
-  ): Promise<UserMatchContext | null> {
+  async getUserMatchContext(userId: string): Promise<UserMatchContext | null> {
     const resumes = await this.resumeRepository.find({
       where: { userId },
       order: { updatedAt: 'DESC' },

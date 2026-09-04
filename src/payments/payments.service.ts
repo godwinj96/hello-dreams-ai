@@ -111,10 +111,23 @@ export class PaymentsService {
       throw new ConflictException('User already has an active subscription');
     }
 
-    // Get plan code from config
-    const planCode = this.configService.get<string>('PAYSTACK_PLAN_CODE');
+    // Paystack plans are per-interval, so monthly and annual need distinct
+    // codes. A single shared code billed everyone on the monthly plan while
+    // recording a one-year period locally. PAYSTACK_PLAN_CODE remains the
+    // fallback so existing single-plan deployments keep working.
+    const fallbackPlanCode =
+      this.configService.get<string>('PAYSTACK_PLAN_CODE');
+    const planCode =
+      billingCycle === BillingCycle.Annual
+        ? (this.configService.get<string>('PAYSTACK_PLAN_CODE_ANNUAL') ??
+          fallbackPlanCode)
+        : (this.configService.get<string>('PAYSTACK_PLAN_CODE_MONTHLY') ??
+          fallbackPlanCode);
+
     if (!planCode) {
-      throw new BadRequestException('Subscription plan not configured');
+      throw new BadRequestException(
+        `Subscription plan not configured for ${billingCycle} billing`,
+      );
     }
 
     const now = new Date();
@@ -397,7 +410,10 @@ export class PaymentsService {
 
     const payment = await this.findPaymentByReference(reference);
     if (payment && payment.userId === userId) {
-      if (paystackStatus === 'success' && payment.status !== PaymentStatus.Success) {
+      if (
+        paystackStatus === 'success' &&
+        payment.status !== PaymentStatus.Success
+      ) {
         const processed = await this.processSuccessfulPayment(
           payment.id,
           reference,
@@ -551,7 +567,9 @@ export class PaymentsService {
   /**
    * Active subscription only — used for Pro daily credit limits.
    */
-  async getActiveUserSubscription(userId: string): Promise<Subscription | null> {
+  async getActiveUserSubscription(
+    userId: string,
+  ): Promise<Subscription | null> {
     return this.subscriptionRepository.findOne({
       where: { userId, status: SubscriptionStatus.Active },
       order: { createdAt: 'DESC' },

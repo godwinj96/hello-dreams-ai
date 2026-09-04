@@ -380,7 +380,8 @@ This endpoint receives webhook events from Paystack to update payment and subscr
             subscription_code: subscriptionCode,
             customer_code: (payload.data.customer as { customer_code?: string })
               ?.customer_code,
-            current_period_start: payload.data.subscription?.current_period_start,
+            current_period_start:
+              payload.data.subscription?.current_period_start,
             current_period_end: payload.data.subscription?.current_period_end,
           },
         );
@@ -422,7 +423,9 @@ This endpoint receives webhook events from Paystack to update payment and subscr
     if (!subscriptionCode) return;
 
     try {
-      await this.paymentsService.markSubscriptionPaymentFailed(subscriptionCode);
+      await this.paymentsService.markSubscriptionPaymentFailed(
+        subscriptionCode,
+      );
     } catch (error) {
       console.error('Error handling subscription payment failure', error);
     }
@@ -432,10 +435,7 @@ This endpoint receives webhook events from Paystack to update payment and subscr
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Verify Paystack checkout reference' })
-  async verifyCheckout(
-    @Request() req,
-    @Query('reference') reference: string,
-  ) {
+  async verifyCheckout(@Request() req, @Query('reference') reference: string) {
     if (!reference) {
       throw new BadRequestException('reference is required');
     }

@@ -1,4 +1,11 @@
-import { Controller, Get, Patch, Body, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Body,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -25,7 +32,7 @@ export class ProfessionalProfileController {
   @ApiResponse({ status: 200, description: 'Profile returned successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getMyProfile(@Request() req): Promise<ProfessionalProfile> {
-    return this.profileService.getProfile(req.user.id);
+    return this.profileService.getPublicProfile(req.user.id);
   }
 
   @Patch('me')

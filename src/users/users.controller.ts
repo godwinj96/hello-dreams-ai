@@ -12,7 +12,12 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import {
   ApiTags,
   ApiOperation,
@@ -21,6 +26,7 @@ import {
   ApiParam,
   ApiBody,
   ApiQuery,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -35,13 +41,20 @@ import { PromoteUserDto } from './dto/promote-user.dto';
 import { UserResponseDto, UserStatsDto } from './dto/user-response.dto';
 import { toUserResponseDto } from './utils/user.mapper';
 import { UUIDValidationPipe } from '../common/pipes/uuid-validation.pipe';
+import { SupabaseStorageService } from '../shared/services/supabase-storage.service';
+
+const AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
 @ApiTags('users')
 @ApiBearerAuth('JWT-auth')
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly storageService: SupabaseStorageService,
+  ) {}
 
   @Get('profile')
   @Roles(Role.User, Role.Admin, Role.Superuser)
@@ -53,6 +66,60 @@ export class UsersController {
   })
   getProfile(@Request() req): UserResponseDto {
     return toUserResponseDto(req.user);
+  }
+
+  @Post('profile/avatar')
+  @Roles(Role.User, Role.Admin, Role.Superuser)
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: memoryStorage(),
+      limits: { fileSize: AVATAR_MAX_BYTES },
+      fileFilter: (_req, file, callback) => {
+        if (AVATAR_MIME_TYPES.includes(file.mimetype)) {
+          callback(null, true);
+        } else {
+          callback(
+            new BadRequestException(
+              `Invalid file type. Allowed types: ${AVATAR_MIME_TYPES.join(', ')}`,
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Upload a profile picture for the current user',
+    description:
+      'Accepts a JPEG, PNG or WebP image up to 2 MB. Returns the updated user with the stored avatar URL.',
+  })
+  @ApiResponse({ status: 201, type: UserResponseDto })
+  @ApiResponse({ status: 400, description: 'Missing or invalid file' })
+  async uploadAvatar(
+    @Request() req,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<UserResponseDto> {
+    if (!file) {
+      throw new BadRequestException('No image uploaded');
+    }
+
+    // Public bucket: an avatar must keep resolving, and the default upload
+    // path returns a signed URL that expires after seven days.
+    const url = await this.storageService.uploadPublic(
+      file.buffer,
+      file.originalname || 'avatar',
+      file.mimetype,
+      'profile',
+      req.user.id,
+      'avatars',
+    );
+
+    const updated = await this.usersService.update(req.user.id, {
+      avatar_url: url,
+    });
+
+    return toUserResponseDto(updated);
   }
 
   @Get()

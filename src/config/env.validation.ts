@@ -116,6 +116,15 @@ class EnvironmentVariables {
   @IsString()
   PAYSTACK_PLAN_CODE: string;
 
+  // Per-interval Paystack plan codes. Fall back to PAYSTACK_PLAN_CODE above.
+  @IsOptional()
+  @IsString()
+  PAYSTACK_PLAN_CODE_MONTHLY: string;
+
+  @IsOptional()
+  @IsString()
+  PAYSTACK_PLAN_CODE_ANNUAL: string;
+
   @IsOptional()
   @IsNumber()
   @Min(1)

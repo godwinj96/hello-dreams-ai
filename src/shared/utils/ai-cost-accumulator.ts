@@ -26,7 +26,12 @@ export class AiCostAccumulator {
   ) {}
 
   addChat(input: ChatUsageInput): CostCalculation {
-    const cost = calculateChatCost(input.model, input.usage, this.ngnToUsdRate);
+    const cost = calculateChatCost(
+      input.model,
+      input.usage,
+      this.ngnToUsdRate,
+      input.provider,
+    );
     this.record({
       operation: input.operation,
       model: input.model,

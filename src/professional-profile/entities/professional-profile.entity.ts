@@ -95,10 +95,23 @@ export class ProfessionalProfile {
       };
     };
     appliedPersona?: boolean;
+    /**
+     * AI-personalised description, persisted so reloads do not fall back to the
+     * generic archetype copy.
+     */
+    currentPersonaDescription?: {
+      howPeopleSeeYou: string;
+      strengths: string[];
+      growthOpportunities: string[];
+    };
   };
 
   @Column({ type: 'jsonb', nullable: true })
   extractedData: {
+    /** AI-written narrative shown at the top of the career profile summary. */
+    careerSummary?: string;
+    /** When the narrative was last generated, ISO-8601. */
+    careerSummaryGeneratedAt?: string;
     background?: string;
     experience?: string;
     skills?: string[];

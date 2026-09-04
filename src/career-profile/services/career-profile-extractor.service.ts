@@ -2,6 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ProfessionalProfileService } from '../../professional-profile/professional-profile.service';
 import { ChatMessage } from '../../resume-builder/services/ai-chat.service';
 
+/** Nothing a human calls a "skill" is longer than this. */
+const MAX_ENTRY_CHARS = 120;
+const MAX_ENTRIES = 20;
+const MAX_TEXT_FIELD_CHARS = 600;
+
 @Injectable()
 export class CareerProfileExtractorService {
   private readonly logger = new Logger(CareerProfileExtractorService.name);
@@ -9,34 +14,48 @@ export class CareerProfileExtractorService {
   constructor(private professionalProfileService: ProfessionalProfileService) {}
 
   /**
-   * Extract structured data from conversation and update professional profile
+   * Best-effort regex extraction that fills gaps the AI extractor left behind.
+   *
+   * This used to run its patterns over the entire transcript, including the
+   * assistant's turns, with unbounded `[^.!?]+` captures. With few sentence
+   * terminators in a long chat a single "skill" grew past 900,000 characters of
+   * leaked prompt text, which then fed every generated document. It now reads
+   * only the user's own words, bounds every value, and never overwrites data
+   * the AI extractor already produced.
    */
   async extractAndUpdateProfile(
     userId: string,
     messages: ChatMessage[],
   ): Promise<void> {
     try {
-      // Get the full conversation text (exclude system messages to prevent prompt leakage)
+      // Only the user's own words describe the user. Assistant turns quote the
+      // system prompt back (including the "✅ I have enough..." line), which is
+      // how prompt text ended up stored as the user's skills.
       const conversationText = messages
-        .filter((msg) => msg.role !== 'system')
-        .map((msg) => `${msg.role}: ${msg.content}`)
+        .filter((msg) => String(msg.role).toLowerCase() === 'user')
+        .map((msg) => msg.content)
         .join('\n');
 
-      // Extract key information using pattern matching and AI analysis
-      const extractedData = this.extractStructuredData(conversationText);
+      if (!conversationText.trim()) return;
 
-      // Update professional profile
-      await this.professionalProfileService.updateExtractedData(
-        userId,
-        extractedData,
-      );
+      const existing = await this.professionalProfileService.getProfile(userId);
 
-      // Extract career goals if mentioned
+      const extracted = this.extractStructuredData(conversationText);
+      const gapFill = this.onlyMissing(extracted, existing.extractedData);
+
+      if (Object.keys(gapFill).length > 0) {
+        await this.professionalProfileService.updateExtractedData(
+          userId,
+          gapFill,
+        );
+      }
+
       const careerGoals = this.extractCareerGoals(conversationText);
-      if (Object.keys(careerGoals).length > 0) {
+      const goalsGapFill = this.onlyMissing(careerGoals, existing.careerGoals);
+      if (Object.keys(goalsGapFill).length > 0) {
         await this.professionalProfileService.updateCareerGoals(
           userId,
-          careerGoals,
+          goalsGapFill,
         );
       }
     } catch (error) {
@@ -45,91 +64,118 @@ export class CareerProfileExtractorService {
     }
   }
 
+  /** Drops keys the profile already has a usable value for. */
+  private onlyMissing(
+    candidate: Record<string, unknown>,
+    current: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(candidate)) {
+      const existingValue = current?.[key];
+      const existingIsPresent = Array.isArray(existingValue)
+        ? existingValue.length > 0
+        : typeof existingValue === 'string'
+          ? existingValue.trim().length > 0
+          : existingValue !== undefined && existingValue !== null;
+
+      if (!existingIsPresent) result[key] = value;
+    }
+
+    return result;
+  }
+
   /**
-   * Extract structured data from conversation text
+   * Splits on sentence terminators AND newlines, so a chat message without
+   * punctuation cannot produce one enormous capture.
    */
-  private extractStructuredData(conversationText: string): any {
-    const extracted: any = {};
+  private sentences(text: string): string[] {
+    return text
+      .split(/[.!?\n\r]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
 
-    // Extract background/experience mentions
-    const experiencePatterns = [
-      /(?:experience|worked|job|role|position).*?(\d+)\s*(?:years?|months?)/i,
-      /(?:background|experience).*?([^.!?]+)/i,
-    ];
+  private toEntries(text: string, pattern: RegExp): string[] {
+    const seen = new Set<string>();
+    const entries: string[] = [];
 
-    // Extract skills mentions
-    const skillsPattern =
-      /(?:skills?|proficient|expert|knowledge).*?([^.!?]+)/gi;
-    const skillsMatches = conversationText.match(skillsPattern);
-    if (skillsMatches) {
-      extracted.skills = skillsMatches
-        .map((match) =>
-          match.replace(/skills?|proficient|expert|knowledge/gi, '').trim(),
-        )
-        .filter((s) => s.length > 0);
+    for (const sentence of this.sentences(text)) {
+      if (sentence.length > MAX_ENTRY_CHARS) continue;
+
+      // `pattern` is global, and RegExp.test on a global regex advances
+      // lastIndex — reset it or every other call spuriously misses.
+      pattern.lastIndex = 0;
+      if (!pattern.test(sentence)) continue;
+      pattern.lastIndex = 0;
+
+      const cleaned = sentence.replace(pattern, '').replace(/\s+/g, ' ').trim();
+      if (!cleaned) continue;
+
+      const key = cleaned.toLowerCase();
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      entries.push(cleaned);
+      if (entries.length >= MAX_ENTRIES) break;
     }
 
-    // Extract achievements mentions
-    const achievementPattern =
-      /(?:achieved|accomplished|award|recognition|success).*?([^.!?]+)/gi;
-    const achievementMatches = conversationText.match(achievementPattern);
-    if (achievementMatches) {
-      extracted.achievements = achievementMatches
-        .map((match) => match.trim())
-        .filter((a) => a.length > 0);
-    }
+    return entries;
+  }
 
-    // Extract education mentions
-    const educationPattern =
-      /(?:education|degree|university|college|graduated).*?([^.!?]+)/gi;
-    const educationMatches = conversationText.match(educationPattern);
-    if (educationMatches) {
-      extracted.education = educationMatches
-        .map((match) => match.trim())
-        .filter((e) => e.length > 0)
-        .join(' ');
+  private extractStructuredData(
+    conversationText: string,
+  ): Record<string, unknown> {
+    const extracted: Record<string, unknown> = {};
+
+    const skills = this.toEntries(
+      conversationText,
+      /\b(skills?|proficient|expert|knowledge)\b/gi,
+    );
+    if (skills.length > 0) extracted.skills = skills;
+
+    const achievements = this.toEntries(
+      conversationText,
+      /\b(achieved|accomplished|award|recognition)\b/gi,
+    );
+    if (achievements.length > 0) extracted.achievements = achievements;
+
+    const education = this.toEntries(
+      conversationText,
+      /\b(education|degree|university|college|graduated)\b/gi,
+    );
+    if (education.length > 0) {
+      extracted.education = education.join('; ').slice(0, MAX_TEXT_FIELD_CHARS);
     }
 
     return extracted;
   }
 
-  /**
-   * Extract career goals from conversation
-   */
-  private extractCareerGoals(conversationText: string): any {
-    const goals: any = {};
+  private extractCareerGoals(
+    conversationText: string,
+  ): Record<string, unknown> {
+    const goals: Record<string, unknown> = {};
 
-    // Extract target roles
-    const rolePattern =
-      /(?:target|want|aspire|goal).*?(?:role|position|job|title).*?([^.!?]+)/gi;
-    const roleMatches = conversationText.match(rolePattern);
-    if (roleMatches) {
-      goals.targetRoles = roleMatches
-        .map((match) =>
-          match
-            .replace(/target|want|aspire|goal|role|position|job|title/gi, '')
-            .trim(),
-        )
-        .filter((r) => r.length > 0);
-    }
+    const targetRoles = this.toEntries(
+      conversationText,
+      /\b(target|aspire)\b.*?\b(role|position|title)\b/gi,
+    );
+    if (targetRoles.length > 0) goals.targetRoles = targetRoles;
 
-    // Extract target industries
-    const industryPattern = /(?:industry|sector|field).*?([^.!?]+)/gi;
-    const industryMatches = conversationText.match(industryPattern);
-    if (industryMatches) {
-      goals.targetIndustries = industryMatches
-        .map((match) => match.replace(/industry|sector|field/gi, '').trim())
-        .filter((i) => i.length > 0);
-    }
+    const targetIndustries = this.toEntries(
+      conversationText,
+      /\b(industry|sector)\b/gi,
+    );
+    if (targetIndustries.length > 0) goals.targetIndustries = targetIndustries;
 
-    // Extract career aspirations
-    const aspirationPattern =
-      /(?:aspiration|dream|goal|vision|future).*?([^.!?]+)/gi;
-    const aspirationMatches = conversationText.match(aspirationPattern);
-    if (aspirationMatches) {
-      goals.careerAspirations = aspirationMatches
-        .map((match) => match.trim())
-        .join(' ');
+    const aspirations = this.toEntries(
+      conversationText,
+      /\b(aspiration|dream|vision)\b/gi,
+    );
+    if (aspirations.length > 0) {
+      goals.careerAspirations = aspirations
+        .join('; ')
+        .slice(0, MAX_TEXT_FIELD_CHARS);
     }
 
     return goals;

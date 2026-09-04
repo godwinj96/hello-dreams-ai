@@ -490,9 +490,11 @@ export class CareerProfileService {
           data.city ||
           data.linkedIn
         ) {
+          // `email` is deliberately omitted: the account address is seeded
+          // from signup and is authoritative. Letting the model overwrite it
+          // put guessed addresses on generated documents.
           await this.professionalProfileService.updateBasicInfo(userId, {
             name: data.name,
-            email: data.email,
             phone: data.phone,
             country: data.country,
             state: data.state,
@@ -542,6 +544,7 @@ export class CareerProfileService {
   async getProfileSummary(
     conversationId: string,
     userId: string,
+    regenerate = false,
   ): Promise<ProfileSummaryResponseDto> {
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId },
@@ -563,6 +566,26 @@ export class CareerProfileService {
     const profile =
       await this.professionalProfileService.getProfileForGeneration(userId);
 
+    // The structured fields on their own read as disconnected fragments, so the
+    // summary leads with a written overview. It is cached on the profile: this
+    // endpoint is also used to rehydrate the view after a refresh, and
+    // regenerating on every read would burn credits for no benefit.
+    let narrative: string | null = profile.extractedData?.careerSummary ?? null;
+
+    if (!narrative || regenerate) {
+      const generated = await this.generateCareerNarrative(
+        conversationId,
+        profile,
+      );
+      if (generated) {
+        narrative = generated;
+        await this.professionalProfileService.saveCareerSummary(
+          userId,
+          generated,
+        );
+      }
+    }
+
     // Mark the career profile section as complete — user has generated their summary
     await this.professionalProfileService.markSectionComplete(
       userId,
@@ -571,6 +594,7 @@ export class CareerProfileService {
 
     return {
       conversationId,
+      narrative,
       summary: {
         basicInfo: profile.basicInfo,
         targetJob: profile.targetJob,
@@ -578,6 +602,108 @@ export class CareerProfileService {
         extractedData: profile.extractedData,
       },
     };
+  }
+
+  /**
+   * Writes a short professional overview from the profile and conversation.
+   *
+   * Returns null rather than throwing when no AI provider is reachable — the
+   * structured summary below it is still worth showing on its own.
+   */
+  private async generateCareerNarrative(
+    conversationId: string,
+    profile: {
+      basicInfo?: any;
+      targetJob?: any;
+      careerGoals?: any;
+      extractedData?: any;
+    },
+  ): Promise<string | null> {
+    try {
+      const messages = await this.messageRepository.find({
+        where: { conversationId },
+        order: { createdAt: 'ASC' },
+      });
+
+      // Long discovery chats can exceed provider payload limits (HuggingFace
+      // returns "request entity too large"), so keep the most recent answers —
+      // the later turns carry the goals and specifics the overview needs.
+      const MAX_TRANSCRIPT_CHARS = 12000;
+      const userTurns = messages
+        .filter((m) => m.role === MessageRole.User)
+        .map((m) => m.content);
+
+      let transcript = userTurns.join('\n');
+      if (transcript.length > MAX_TRANSCRIPT_CHARS) {
+        const kept: string[] = [];
+        let budget = MAX_TRANSCRIPT_CHARS;
+        for (let i = userTurns.length - 1; i >= 0; i -= 1) {
+          const turn = userTurns[i];
+          if (turn.length + 1 > budget) break;
+          kept.unshift(turn);
+          budget -= turn.length + 1;
+        }
+        transcript = kept.join('\n');
+      }
+
+      if (!transcript.trim()) return null;
+
+      const facts = JSON.stringify(
+        {
+          basicInfo: profile.basicInfo ?? {},
+          targetJob: profile.targetJob ?? {},
+          careerGoals: profile.careerGoals ?? {},
+          background: profile.extractedData?.background,
+          experience: profile.extractedData?.experience,
+          education: profile.extractedData?.education,
+          skills: profile.extractedData?.skills,
+        },
+        null,
+        2,
+      );
+
+      const systemPrompt = `You are writing a career profile overview that the user will read back about themselves.
+
+Write 2-3 short paragraphs in second person ("You are...", "You're aiming for...").
+
+Rules:
+- Use ONLY the facts provided. Never invent employers, titles, dates, or achievements.
+- Produce flowing prose. No headings, no bullet points, no markdown, no labels.
+- Connect their background to the role they are targeting so it reads as one story.
+- If a detail is missing, leave it out rather than guessing or noting its absence.
+- NEVER emit placeholders such as [number], [company], [X years] or similar. Rewrite the sentence without the detail instead.
+- Warm and professional. No filler like "Based on our conversation".
+- Keep it under 200 words.`;
+
+      const userPrompt = `Structured profile data:
+${facts}
+
+What they said in conversation:
+${transcript}`;
+
+      const result = await this.aiChatService.chat([
+        { role: MessageRole.System, content: systemPrompt },
+        { role: MessageRole.User, content: userPrompt },
+      ]);
+
+      const text = (result ?? '').trim();
+      if (text.length === 0) return null;
+
+      // Smaller fallback models sometimes emit template placeholders like
+      // "[number] years". Showing those back to the user reads as broken, so
+      // treat it as a failed generation and fall back to the structured view.
+      if (/\[[^\]]{2,40}\]/.test(text)) {
+        this.logger.warn(
+          'Discarding career narrative containing unfilled placeholders',
+        );
+        return null;
+      }
+
+      return text;
+    } catch (error) {
+      this.logger.error('Career narrative generation failed', error);
+      return null;
+    }
   }
 
   async completeConversation(
@@ -702,7 +828,7 @@ Be warm, supportive, and help them think deeply about their career journey.
 
 Once you have collected enough information across these areas — contact details, target role, career goals, work experience, education, and key skills — end your message with exactly this line on its own paragraph:
 
-✅ I have enough to build your career profile. Click **"Generate Profile Summary"** below when you're ready.
+✅ I have enough to build your career profile. Click the **"Generate Profile Summary"** button whenever you're ready.
 
 Only add this line once, when you genuinely have sufficient information to build a meaningful profile. Do not add it prematurely.`;
   }

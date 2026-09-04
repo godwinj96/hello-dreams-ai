@@ -1,5 +1,6 @@
 import {
   Controller,
+  Query,
   Get,
   Post,
   Put,
@@ -183,10 +184,12 @@ export class CareerProfileController {
   async getProfileSummary(
     @Param('id', UUIDValidationPipe) conversationId: string,
     @Request() req,
+    @Query('regenerate') regenerate?: string,
   ): Promise<ProfileSummaryResponseDto> {
     return this.careerProfileService.getProfileSummary(
       conversationId,
       req.user.id,
+      regenerate === 'true',
     );
   }
 

@@ -7,6 +7,7 @@ import { PersonaResponseDto, QuestionDto } from './dto/persona-response.dto';
 import { ProfessionalProfileService } from '../professional-profile/professional-profile.service';
 import { PersonaScoringService } from './services/persona-scoring.service';
 import { PersonaContentService } from './services/persona-content.service';
+import { PersonaAiService } from './services/persona-ai.service';
 import { PersonaArchetype } from './enums/persona-archetype.enum';
 import { PERSONA_QUESTIONS } from './constants/persona-questions';
 import { UsageTrackingService } from '../admin/services/usage-tracking.service';
@@ -24,6 +25,7 @@ export class PersonaBuilderService {
     private professionalProfileService: ProfessionalProfileService,
     private personaScoringService: PersonaScoringService,
     private personaContentService: PersonaContentService,
+    private personaAiService: PersonaAiService,
     private usageTrackingService: UsageTrackingService,
     private aiCostTrackingService: AiCostTrackingService,
     private dashboardEventService: DashboardEventService,
@@ -127,8 +129,9 @@ export class PersonaBuilderService {
       careerGoal,
     );
 
-    // Get persona descriptions
-    const currentPersonaDescription =
+    // Static archetype content is the floor, not the finished product: on its
+    // own it is identical for every user with the same archetype pair.
+    let currentPersonaDescription =
       this.personaContentService.getPersonaDescription(
         scoringResult.currentPersona,
       );
@@ -137,12 +140,29 @@ export class PersonaBuilderService {
         scoringResult.idealPersona,
       );
 
-    // Generate transformation playbook
-    const transformationPlaybook =
+    let transformationPlaybook =
       this.personaContentService.generateTransformationPlaybook(
         scoringResult.currentPersona,
         scoringResult.idealPersona,
       );
+
+    // Rewrite both against the user's actual answers and career context.
+    // Returns null when no AI provider is reachable, leaving the static text.
+    const personalised = await this.personaAiService.personalise({
+      currentPersona: scoringResult.currentPersona,
+      idealPersona: scoringResult.idealPersona,
+      answers: this.toReadableAnswers(answerMap),
+      targetJobTitle,
+      careerGoal,
+      background: profile.extractedData?.background,
+      experience: profile.extractedData?.experience,
+    });
+
+    if (personalised) {
+      currentPersonaDescription = personalised.currentPersonaDescription;
+      transformationPlaybook = personalised.playbook;
+      this.logger.log(`Persona personalised by AI for user ${userId}`);
+    }
 
     // Build persona data
     const personaData = {
@@ -154,6 +174,9 @@ export class PersonaBuilderService {
         playbook: transformationPlaybook,
       },
       appliedPersona: false,
+      // Stored so getPersona() can return the personalised text later instead
+      // of regenerating the generic archetype copy.
+      currentPersonaDescription,
     };
 
     const persona = this.buildPersonaStyle(
@@ -291,7 +314,10 @@ export class PersonaBuilderService {
       });
     }
 
+    // Same as getPersona: keep the personalised copy rather than reverting to
+    // the generic archetype text once the persona is applied.
     const currentPersonaDescription =
+      updatedProfile.personaData.currentPersonaDescription ??
       this.personaContentService.getPersonaDescription(
         updatedProfile.personaData.currentPersona! as PersonaArchetype,
       );
@@ -350,7 +376,11 @@ export class PersonaBuilderService {
       return null;
     }
 
+    // Prefer the personalised text captured at generation time; the static
+    // archetype copy is only a fallback for personas generated before this
+    // existed, or when the AI was unavailable.
     const currentPersonaDescription =
+      profile.personaData.currentPersonaDescription ??
       this.personaContentService.getPersonaDescription(
         profile.personaData.currentPersona as PersonaArchetype,
       );
@@ -387,6 +417,23 @@ export class PersonaBuilderService {
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };
+  }
+
+  /** Turns stored option ids back into the question/answer text for the model. */
+  private toReadableAnswers(
+    answerMap: Map<string, string>,
+  ): Array<{ question: string; answer: string }> {
+    const readable: Array<{ question: string; answer: string }> = [];
+
+    for (const question of PERSONA_QUESTIONS) {
+      const optionId = answerMap.get(question.id);
+      if (!optionId) continue;
+      const option = question.options.find((o) => o.id === optionId);
+      if (!option) continue;
+      readable.push({ question: question.question, answer: option.text });
+    }
+
+    return readable;
   }
 
   private buildPersonaStyle(

@@ -59,6 +59,13 @@ export class ProfileSummaryResponseDto {
   @ApiProperty({ description: 'Conversation ID', example: 'uuid' })
   conversationId: string;
 
+  @ApiProperty({
+    description:
+      'AI-written narrative overview of the candidate. Null only when no AI provider could be reached.',
+    required: false,
+  })
+  narrative?: string | null;
+
   @ApiProperty({ description: 'Extracted profile summary' })
   summary: {
     basicInfo?: any;

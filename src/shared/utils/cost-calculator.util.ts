@@ -11,6 +11,14 @@ const CHAT_MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'gpt-4o': { input: 2.5, output: 10.0 },
   'gpt-4': { input: 30.0, output: 60.0 },
   'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
+  // Gemini — used by the AiChatService fallback chain.
+  // Pricing per 1M tokens, https://ai.google.dev/pricing
+  // NOTE: flash-tier rates are approximate — verify against
+  // https://ai.google.dev/pricing before relying on these for billing.
+  'gemini-3.6-flash': { input: 0.1, output: 0.4 },
+  'gemini-2.0-flash': { input: 0.1, output: 0.4 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.3 },
+  'gemini-1.5-pro': { input: 1.25, output: 5.0 },
 };
 
 // Embedding pricing per 1M input tokens
@@ -71,18 +79,45 @@ function resolveChatPricing(model: string): { input: number; output: number } {
   if (key.startsWith('gpt-4.1')) return CHAT_MODEL_PRICING['gpt-4.1'];
   if (key.startsWith('gpt-4o-mini')) return CHAT_MODEL_PRICING['gpt-4o-mini'];
   if (key.startsWith('gpt-4o')) return CHAT_MODEL_PRICING['gpt-4o'];
+  if (key.startsWith('gemini-3.6-flash'))
+    return CHAT_MODEL_PRICING['gemini-3.6-flash'];
+  if (key.startsWith('gemini-2.0-flash'))
+    return CHAT_MODEL_PRICING['gemini-2.0-flash'];
+  if (key.startsWith('gemini-1.5-flash'))
+    return CHAT_MODEL_PRICING['gemini-1.5-flash'];
+  if (key.startsWith('gemini-1.5-pro'))
+    return CHAT_MODEL_PRICING['gemini-1.5-pro'];
   console.warn(`Unknown chat model ${model}, using gpt-4o-mini pricing`);
   return CHAT_MODEL_PRICING['gpt-4o-mini'];
 }
 
 /**
+ * Providers we are not billed per-token for. HuggingFace inference and a local
+ * Ollama box carry no per-token charge, so pricing their tokens against an
+ * OpenAI rate card overstates spend on the admin cost dashboard.
+ */
+const UNBILLED_PROVIDERS = new Set(['huggingface', 'ollama']);
+
+/**
  * Calculate chat/extraction cost based on token usage and model.
+ *
+ * `provider` is optional for backward compatibility; when supplied it lets an
+ * unbilled provider report zero cost while still recording token volume.
  */
 export function calculateChatCost(
   model: string,
   usage: TokenUsage,
   ngnToUsdRate: number = DEFAULT_NGN_TO_USD_RATE,
+  provider?: string,
 ): CostCalculation {
+  if (provider && UNBILLED_PROVIDERS.has(provider)) {
+    return {
+      costUsd: 0,
+      costNgn: 0,
+      tokensUsed: usage.totalTokens,
+    };
+  }
+
   const pricing = resolveChatPricing(model);
   const inputCostUsd = (usage.promptTokens / 1_000_000) * pricing.input;
   const outputCostUsd = (usage.completionTokens / 1_000_000) * pricing.output;
